@@ -168,7 +168,7 @@ bool speedtest::SpeedTest::share(const speedtest::Server& server, std::string& i
 
 	std::string hash = speedtest::md5(hash_data.str());
 
-	/*
+/*
 	post_data << "download=" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) << "&" <<
 		"ping=" << std::setprecision(0) << std::fixed << this -> _latency << "&" <<
 		"upload=" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) << "&" <<
@@ -177,13 +177,10 @@ bool speedtest::SpeedTest::share(const speedtest::Server& server, std::string& i
 		"accuracy=1&" <<
 		"serverid=" << server.id << "&" <<
 		"hash=" << hash;
-	*/
-
-	speedtest::Server recommended_server;
-	bool recommended = this -> select_recommended_server(recommended_server);
+*/
 
 	post_data <<
-		"recommendedserverid=" << ( recommended ? recommended_server.id : server.id ) << "&" <<
+		"recommendedserverid=" << server.id << "&" <<
 		"ping=" << std::setprecision(0) << std::fixed << this -> _latency << "&" <<
 		"screenresolution=&" <<
 		"screendpi=&" <<
