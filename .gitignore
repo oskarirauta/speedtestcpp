@@ -32,5 +32,5 @@
 *.app
 
 objs/*.o
-speedtest
-minitest
+./speedtest
+./minitest

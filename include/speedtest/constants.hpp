@@ -6,6 +6,12 @@ namespace speedtest {
 
 	static const std::string version = "1.20.0";
 
+#ifdef SPEEDTEST_GIT_COMMIT
+	static const std::string git_commit = SPEEDTEST_GIT_COMMIT;
+#else
+	static const std::string git_commit = "";
+#endif
+
 #ifdef OLD_SERVER_LIST
 	static const std::string SERVER_LIST_URL = "https://www.speedtest.net/speedtest-servers.php";
 #else

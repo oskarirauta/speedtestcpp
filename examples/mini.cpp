@@ -9,6 +9,10 @@
 int main(const int argc, const char **argv) {
 
 	std::cout << "SpeedTest++ mini version " << speedtest::version << std::endl;
+
+	if ( !speedtest::git_commit.empty())
+		std::cout << "git commit: " + speedtest::git_commit << std::endl;
+
 	std::cout << "Minimal Speedtest.net command line interface example" << std::endl;
 	std::cout << "Author: Oskari Rauta <oskari.rauta@gmail.com>" << std::endl;
 

@@ -9,10 +9,12 @@
 void banner() {
 
 	std::cout << "SpeedTest++ version " << speedtest::version << std::endl;
+	if ( !speedtest::git_commit.empty())
+		std::cout << "git commit: " + speedtest::git_commit << std::endl;
 	std::cout << "Speedtest.net command line interface" << std::endl;
-	std::cout << "Info: https://github.com/oskarirauta/SpeedTest (forked from: https://github.com/taganaka/SpeedTest)" << std::endl;
+	std::cout << "Info: https://github.com/oskarirauta/speedtestcpp" << std::endl;
 	std::cout << "Author: Francesco Laurita <francesco.laurita@gmail.com>" << std::endl;
-	std::cout << "Co-authored: Oskari Rauta <oskari.rauta@gmail.com>" << std::endl;
+	std::cout << "Co-authored-by: Oskari Rauta <oskari.rauta@gmail.com>" << std::endl;
 }
 
 void usage(const char* name) {

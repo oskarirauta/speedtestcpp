@@ -4,6 +4,13 @@ SPEEDTEST_DIR?=speedtestcpp
 CXXFLAGS?=--std=c++23
 LDFLAGS?=-L/lib -L/usr/lib
 
+SPEEDTEST_GIT_COMMIT:=xxx
+
+ifeq ($(shell test -e "$(SPEEDTEST_DIR)/.git/refs/heads/master" && echo -n yes),yes)
+	SPEEDTEST_GIT_COMMIT=$(shell cat $(SPEEDTEST_DIR)/.git/refs/heads/master | cut -c 1-8)
+	CXXFLAGS+= -DSPEEDTEST_GIT_COMMIT="\"$(SPEEDTEST_GIT_COMMIT)\""
+endif
+
 INCLUDES:=-I./$(SPEEDTEST_DIR)/include
 SPEEDTEST_LIBS:=-lcrypto -lcurl
 
