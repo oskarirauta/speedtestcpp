@@ -1,35 +1,38 @@
+#pragma once
+
 //
 // Created by Francesco Laurita on 9/9/16.
 //
 
-#ifndef SPEEDTEST_CMDOPTIONS_H
-#define SPEEDTEST_CMDOPTIONS_H
+#include <cstring>
 #include <getopt.h>
 
 enum OutputType { verbose, text, json };
 
 
 typedef struct program_options_t {
-    bool help     = false;
-    bool latency  = false;
-    bool download = false;
-    bool upload   = false;
-    bool share    = false;
-    bool insecure = false;
+    bool help			= false;
+    bool latency		= false;
+    bool download		= false;
+    bool upload			= false;
+    bool share			= false;
+    bool insecure		= false;
+    bool force_ping_selected	= false;
     std::string selected_server = "";
     OutputType output_type = OutputType::verbose;
 } ProgramOptions;
 
 static struct option CmdLongOptions[] = {
-        {"help",        no_argument,       0, 'h' },
-        {"latency",     no_argument,       0, 'l' },
-        {"download",    no_argument,       0, 'd' },
-        {"upload",      no_argument,       0, 'u' },
-        {"share",       no_argument,       0, 's' },
-        {"insecure",    no_argument,       0, 'i' },
-        {"test-server", required_argument, 0, 't' },
-        {"output",      required_argument, 0, 'o' },
-        {0,             0,                 0,  0  }
+	{ "help",			no_argument,		0, 'h' },
+	{ "latency",			no_argument,		0, 'l' },
+	{ "download",			no_argument,		0, 'd' },
+	{ "upload",			no_argument,		0, 'u' },
+	{ "share",			no_argument,		0, 's' },
+	{ "insecure",			no_argument,		0, 'i' },
+	{ "force-by-latency-test",	no_argument,		0, 'f' },
+	{ "test-server",		required_argument,	0, 't' },
+	{ "output",			required_argument,	0, 'o' },
+	{ 0, 0, 0, 0 }
 };
 
 const char *optStr = "hldusiqt:o:";
@@ -57,6 +60,9 @@ bool ParseOptions(const int argc, const char **argv, ProgramOptions& options){
             case 'i':
                 options.insecure = true;
                 break;
+            case 'f':
+                options.force_ping_selected = true;
+                break;
             case 't':
                 options.selected_server.append(optarg);
                 break;
@@ -81,6 +87,3 @@ bool ParseOptions(const int argc, const char **argv, ProgramOptions& options){
     }
     return true;
 }
-
-
-#endif //SPEEDTEST_CMDOPTIONS_H

@@ -1,3 +1,6 @@
+# Prerequisites
+*.d
+
 # Compiled Object files
 *.slo
 *.lo
@@ -27,10 +30,7 @@
 *.exe
 *.out
 *.app
-cmake_build/
-.idea/
-cmake-build-debug/
-cmake-build-linux/
 
-# Visual Studio 2015/2017 cache/options directory
-.vs/
+objs/*.o
+speedtest
+minitest
