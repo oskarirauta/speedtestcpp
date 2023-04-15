@@ -1,7 +1,8 @@
 #include <iomanip>
 #include <netdb.h>
+#include <sys/utsname.h>
 
-#include "speedtest/utils.hpp"
+#include "speedtest/md5.hpp"
 #include "speedtest/speedtest.hpp"
 
 speedtest::SpeedTest::SpeedTest(float minServerVersion): _latency(0), _uploadSpeed(0), _downloadSpeed(0) {
@@ -155,15 +156,19 @@ bool speedtest::SpeedTest::jitter(const speedtest::Server &server, long& result,
 
 bool speedtest::SpeedTest::share(const speedtest::Server& server, std::string& image_url) {
 
-	std::stringstream post_data, result;
-	std::string hash;
+	std::stringstream hash_data, post_data, result;
 	long http_code = 0;
 
 	image_url.clear();
 
-	if ( !this -> get_hash(hash))
-		return false;
+	hash_data << std::setprecision(0) << std::fixed << this -> _latency <<
+		"-" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) <<
+		"-" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) <<
+		"-" << speedtest::API_KEY;
 
+	std::string hash = speedtest::md5(hash_data.str());
+
+	/*
 	post_data << "download=" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) << "&" <<
 		"ping=" << std::setprecision(0) << std::fixed << this -> _latency << "&" <<
 		"upload=" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) << "&" <<
@@ -172,6 +177,25 @@ bool speedtest::SpeedTest::share(const speedtest::Server& server, std::string& i
 		"accuracy=1&" <<
 		"serverid=" << server.id << "&" <<
 		"hash=" << hash;
+	*/
+
+	speedtest::Server recommended_server;
+	bool recommended = this -> select_recommended_server(recommended_server);
+
+	post_data <<
+		"recommendedserverid=" << ( recommended ? recommended_server.id : server.id ) << "&" <<
+		"ping=" << std::setprecision(0) << std::fixed << this -> _latency << "&" <<
+		"screenresolution=&" <<
+		"screendpi=&" <<
+		"promo=&" <<
+		"download=" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) << "&" <<
+		"upload=" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) << "&" <<
+		"testmethod=http&" <<
+		"hash=" << hash << "&" <<
+		"touchscreen=none&" <<
+		"startmode=pingselect&" <<
+		"accuracy=1&" <<
+		"serverid=" << server.id;
 
 	CURL *c = curl_easy_init();
 	curl_easy_setopt(c, CURLOPT_REFERER, speedtest::API_REFERER_URL.c_str());
@@ -194,16 +218,17 @@ bool speedtest::SpeedTest::share(const speedtest::Server& server, std::string& i
 
 // private
 
-const bool speedtest::SpeedTest::get_hash(std::string &hash) {
+const std::string speedtest::SpeedTest::user_agent() {
 
-	std::stringstream data;
+	struct utsname buf;
 
-	data << std::setprecision(0) << std::fixed << this -> _latency <<
-		"-" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) <<
-		"-" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) <<
-		"-" << speedtest::API_KEY;
+	if ( uname(&buf))
+		return "Mozilla/5.0 Linux-1; U; x86_64; en-us (KHTML, like Gecko) SpeedTestCpp/" + speedtest::version;
 
-	return speedtest::hex_digest(data.str(), hash);
+	std::stringstream ss;
+
+	ss << "Mozilla/5.0 " << buf.sysname << "-" << buf.release << "; U; " << buf.machine << "; en-us (KHTML, like Gecko) SpeedTestCpp/" + speedtest::version;
+	return ss.str();
 }
 
 double speedtest::SpeedTest::execute(const speedtest::Server &server, const speedtest::Config &config, const opFn &pfunc, std::function<void(bool, double)> cb) {
@@ -331,7 +356,7 @@ CURL *speedtest::SpeedTest::curl_setup(CURL *handler) {
 		if ( curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &speedtest::SpeedTest::write_func) == CURLE_OK &&
 			curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L) == CURLE_OK &&
 			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) == CURLE_OK &&
-			curl_easy_setopt(curl, CURLOPT_USERAGENT, speedtest::user_agent().c_str()) == CURLE_OK ) return curl;
+			curl_easy_setopt(curl, CURLOPT_USERAGENT, speedtest::SpeedTest::user_agent().c_str()) == CURLE_OK ) return curl;
 		else {
 			curl_easy_cleanup(handler);
 			return nullptr;

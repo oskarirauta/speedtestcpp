@@ -47,6 +47,7 @@ namespace speedtest {
 
 			static std::map<std::string, std::string> parse_query_string(const std::string& query);
 			static std::vector<std::string> split_string(const std::string& instr, char separator);
+			static const std::string user_agent();
 
 
 		private:
@@ -64,7 +65,6 @@ namespace speedtest {
 			double execute(const speedtest::Server &server, const speedtest::Config &config, const opFn &fnc, std::function<void(bool, double)> cb = nullptr);
 			const speedtest::Server find_best_server_in(const std::vector<speedtest::Server>& servers, long& latency, int sample_size = 5, std::function<void(bool, const speedtest::Server&, long)> cb = nullptr);
 			bool parse_servers(const std::string json, speedtest::IPInfo& info, std::vector<std::map<std::string, std::string>> &servers);
-			const bool get_hash(std::string &hash);
 
 			static CURL* curl_setup(CURL* curl = nullptr);
 			CURLcode http_get(const std::string& url, std::stringstream& os, CURL *handler = nullptr, long timeout = 30);

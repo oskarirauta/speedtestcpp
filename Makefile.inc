@@ -12,10 +12,10 @@ ifeq ($(shell test -e "$(SPEEDTEST_DIR)/.git/refs/heads/master" && echo -n yes),
 endif
 
 INCLUDES:=-I./$(SPEEDTEST_DIR)/include
-SPEEDTEST_LIBS:=-lcrypto -lcurl
+SPEEDTEST_LIBS:=-lcurl
 
 SPEEDTEST_OBJS:= \
-	objs/sp_utils.o \
+	objs/sp_md5.o \
 	objs/sp_profile.o \
 	objs/sp_client.o \
 	objs/sp_speedtest.o
@@ -26,6 +26,9 @@ ifneq ($(USE_OLD_SERVER_LIST),0)
 else
 	SPEEDTEST_OBJS += objs/sp_json_servers_parser.o
 endif
+
+objs/sp_md5.o: $(SPEEDTEST_DIR)/src/md5.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<;
 
 objs/sp_utils.o: $(SPEEDTEST_DIR)/src/utils.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<;
