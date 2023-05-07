@@ -18,4 +18,4 @@ jobs:
         packages: curl libcurl4-openssl-dev
         #version: 1.0
     - name: compile
-      run: make
+      run: CXXFLAGS="--std=c++23 -Wall -fPIC -lcurl" make
