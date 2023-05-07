@@ -1,3 +1,4 @@
+#include <cstring>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include "speedtest/client.hpp"
