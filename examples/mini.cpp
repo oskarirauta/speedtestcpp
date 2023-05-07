@@ -32,9 +32,10 @@ int main(const int argc, const char **argv) {
 	std::cout << " - IP address information retrieved" << std::endl;
 
 	speedtest::Server server;
+	speedtest::Profile profile(0);
 
 	if ( !sp.select_recommended_server(server))
-		server = sp.best_server(10, nullptr);
+		server = sp.best_server(10);
 
 	long latency = sp.latency();
 	std::cout << " - Latency test finished" << std::endl;
@@ -46,31 +47,38 @@ int main(const int argc, const char **argv) {
 		jitter = -1;
 	} else std::cout << " - Jitter test finished" << std::endl;
 
+	bool recommended_chosen = sp.profile(profile);
 	double dl = 0, ul = 0;
 	double previous_speed = -1;
 	std::mutex output_mutex;
 
 	std::cout << "\e[?25l";
-	if ( !sp.download_speed(server, speedtest::Config::preflight, dl, [&previous_speed, &output_mutex](bool success, double current_speed) {
 
-		if ( success ) {
-			output_mutex.lock();
-			std::cout << ( previous_speed == -1 ? " - Pre-flight check: " : "\r - Pre-flight check: " ) <<
-				std::setprecision(2) << ( current_speed / 1000 / 1000 * speedtest::Config::preflight.concurrency ) <<
-				" Mbit/s" << "          " << std::flush;
-			previous_speed = current_speed;
-			output_mutex.unlock();
-		}
+	if ( !recommended_chosen ) {
 
-	})) {
-		std::cout << "\e[?25h";
-		std::cout << ( previous_speed == -1 ? " - Pre-flight check: failure" : "\r - Pre-flight check: failure" ) <<
-			"          " << std::endl;
-		std::cerr << "error: pre-flight check failed" << std::endl;
-		return -1;
-	} else std::cout << "\r - Pre-flight check finished" << "          " << std::endl;
+		if ( !sp.profile(profile) && !sp.download_speed(server, speedtest::Config::preflight, dl, [&previous_speed, &output_mutex](bool success, double current_speed) {
 
-	speedtest::Profile profile(dl);
+			if ( success ) {
+				output_mutex.lock();
+				std::cout << ( previous_speed == -1 ? " - Pre-flight check: " : "\r - Pre-flight check: " ) <<
+					std::setprecision(2) << ( current_speed / 1000 / 1000 * speedtest::Config::preflight.concurrency ) <<
+					" Mbit/s" << "          " << std::flush;
+				previous_speed = current_speed;
+				output_mutex.unlock();
+			}
+
+		})) {
+			std::cout << "\e[?25h";
+			std::cout << ( previous_speed == -1 ? " - Pre-flight check: failure" : "\r - Pre-flight check: failure" ) <<
+				"          " << std::endl;
+			std::cerr << "error: pre-flight check failed" << std::endl;
+			return -1;
+		} else std::cout << "\r - Pre-flight check finished" << "          " << std::endl;
+
+		profile = speedtest::Profile(dl);
+
+	} else std::cout << " - Server recommended profile selected" << std::endl;
+
 	dl = 0;
 	previous_speed = -1;
 

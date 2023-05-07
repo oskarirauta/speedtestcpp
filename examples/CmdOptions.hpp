@@ -7,23 +7,26 @@
 #include <cstring>
 #include <getopt.h>
 
+#define OPT_LIST 1000
+
 enum OutputType { verbose, text, json };
 
-
 typedef struct program_options_t {
-    bool help			= false;
-    bool latency		= false;
-    bool download		= false;
-    bool upload			= false;
-    bool share			= false;
-    bool insecure		= false;
-    bool force_ping_selected	= false;
-    std::string selected_server = "";
-    OutputType output_type = OutputType::verbose;
+	bool help			= false;
+	bool list			= false;
+	bool latency			= false;
+	bool download			= false;
+	bool upload			= false;
+	bool share			= false;
+	bool insecure			= false;
+	bool force_ping_selected	= false;
+	std::string selected_server 	= "";
+	OutputType output_type		= OutputType::verbose;
 } ProgramOptions;
 
 static struct option CmdLongOptions[] = {
 	{ "help",			no_argument,		0, 'h' },
+	{ "list-servers",		no_argument,		0, OPT_LIST },
 	{ "latency",			no_argument,		0, 'l' },
 	{ "download",			no_argument,		0, 'd' },
 	{ "upload",			no_argument,		0, 'u' },
@@ -37,53 +40,58 @@ static struct option CmdLongOptions[] = {
 
 const char *optStr = "hldusiqt:o:";
 
-bool ParseOptions(const int argc, const char **argv, ProgramOptions& options){
-    int long_index =0;
-    int opt = 0;
-    while ((opt = getopt_long(argc, (char **)argv, optStr, CmdLongOptions, &long_index )) != -1) {
-        switch (opt){
-            case 'h':
-                options.help     = true;
-                break;
-            case 'l':
-                options.latency  = true;
-                break;
-            case 'd':
-                options.download = true;
-                break;
-            case 'u':
-                options.upload   = true;
-                break;
-            case 's':
-                options.share    = true;
-                break;
-            case 'i':
-                options.insecure = true;
-                break;
-            case 'f':
-                options.force_ping_selected = true;
-                break;
-            case 't':
-                options.selected_server.append(optarg);
-                break;
-            case 'o':
-                if (strcmp(optarg, "verbose") == 0)
-                    options.output_type = OutputType::verbose;
-                else if (strcmp(optarg, "text") == 0)
-                    options.output_type = OutputType::text;
-                else if (strcmp(optarg, "json") == 0)
-                    options.output_type = OutputType::json;
-                else {
-                    std::cerr << "Unsupported output type " << optarg << std::endl;
-                    std::cerr << "Supported output type: default, text, json" <<std::endl;
-                    return false;
-                }
+bool ParseOptions(const int argc, const char **argv, ProgramOptions& options) {
 
-                break;
-            default:
-                return false;
-        }
+	int long_index = 0;
+	int opt = 0;
 
-    }
-    return true;
+	while ((opt = getopt_long(argc, (char **)argv, optStr, CmdLongOptions, &long_index )) != -1) {
+
+		switch (opt) {
+
+			case 'h':
+				options.help = true;
+				break;
+			case OPT_LIST:
+				options.list = true;
+				break;
+			case 'l':
+				options.latency = true;
+				break;
+			case 'd':
+				options.download = true;
+                		break;
+			case 'u':
+				options.upload  = true;
+				break;
+			case 's':
+				options.share = true;
+				break;
+			case 'i':
+				options.insecure = true;
+				break;
+			case 'f':
+				options.force_ping_selected = true;
+				break;
+			case 't':
+				options.selected_server.append(optarg);
+				break;
+			case 'o':
+				if (strcmp(optarg, "verbose") == 0)
+					options.output_type = OutputType::verbose;
+				else if (strcmp(optarg, "text") == 0)
+					options.output_type = OutputType::text;
+				else if (strcmp(optarg, "json") == 0)
+					options.output_type = OutputType::json;
+				else {
+					std::cerr << "Unsupported output type " << optarg << std::endl;
+					std::cerr << "Supported output type: default, text, json" <<std::endl;
+					return false;
+				}
+				break;
+			default:
+				return false;
+		}
+	}
+	return true;
 }

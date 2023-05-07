@@ -24,6 +24,7 @@ void usage(const char* name) {
 		"      [--test-server host:port] [--output verbose|text|json]\n" <<
 		"\noptional arguments:\n" <<
 		"  --help                      Show this message and exit\n" <<
+		"  --list-servers              Show list of servers\n" <<
 		"  --latency                   Perform latency test only\n" <<
 		"  --download                  Perform download test only. It includes latency test\n" <<
 		"  --upload                    Perform upload test only. It includes latency test\n" <<
@@ -91,79 +92,118 @@ int main(const int argc, const char **argv) {
 	}
 
 	auto servers = sp.servers();
+	bool recommended_chosen = false;
 
-	if ( programOptions.selected_server.empty()) {
+	if ( servers.empty()) {
 
-		if ( programOptions.output_type == OutputType::verbose )
-			std::cout << "Finding fastest server... " << std::flush;
+		if ( programOptions.output_type == OutputType::json )
+			std::cout << "\"error\":\"unable to download server list\"}" << std::endl;
+		else std::cerr << "Unable to download server list. Try again later" << std::endl;
 
-		if ( servers.empty()) {
+		return EXIT_FAILURE;
+	}
 
-			if ( programOptions.output_type == OutputType::json )
-				std::cout << "\"error\":\"unable to download server list\"}" << std::endl;
-			else std::cerr << "Unable to download server list. Try again later" << std::endl;
+	if ( programOptions.list && !servers.empty() && (
+		programOptions.output_type == OutputType::verbose || programOptions.output_type == OutputType::json )) {
 
-			return EXIT_FAILURE;
+		if ( programOptions.output_type == OutputType::json )
+			std::cout << "\"servers_online\":" << servers.size() << ",";
+
+		if ( programOptions.output_type == OutputType::verbose && servers.size() > 0 )
+			std::cout << "\n";
+		else if ( programOptions.output_type == OutputType::json && servers.size() > 0 )
+			std::cout << "\"servers\":[";
+
+		int i = 0;
+		for ( auto &s : servers ) {
+
+			if (programOptions.output_type == OutputType::verbose )
+				std::cout << "Server #" << s.id << ": " << s.name <<
+					" " << s.host <<
+					" by " << s.sponsor <<
+					" (" << s.distance << " km from you" <<
+					( s.recommended ? ", recommended)" : ")" ) << std::endl;
+			else std::cout << ( i == 0 ? "{" : ",{" ) <<
+				"\"id\":" << s.id << "," <<
+				"\"host\":\"" << s.host << "\"," <<
+				"\"name\":\"" << s.name << "\"," <<
+				"\"sponsor\":\"" << s.sponsor << "\"," <<
+				"\"url\":\"" << s.url << "\"," <<
+				"\"country\":\"" << s.country << "\"," <<
+				"\"country_code\":\"" << s.country_code << "\"," <<
+				"\"lat\":\"" << s.lat << "\"," <<
+				"\"lon\":\"" << s.lon << "\"," <<
+				"\"distance\":" << s.distance << "," <<
+				"\"recommended\":" << ( s.recommended ? "1" : "0" ) <<
+				"}";
+			i++;
 		}
 
-		if ( programOptions.output_type == OutputType::verbose )
-			std::cout << servers.size() << " Servers online" << std::endl;
-		else if ( programOptions.output_type == OutputType::json )
-			std::cout << "\"servers_online\":\"" << servers.size() << "\",";
+		if ( programOptions.output_type == OutputType::verbose && servers.size() > 0 )
+			std::cout << std::endl;
+		if ( programOptions.output_type == OutputType::json && servers.size() > 0 )
+			std::cout << "],";
+	}
 
-		bool recommended_chosen = false;
+	if ( programOptions.selected_server.empty()) {
 
 		if ( !programOptions.force_ping_selected )
 			recommended_chosen = sp.select_recommended_server(server);
 
-		if ( !recommended_chosen )
+		if ( !recommended_chosen ) {
+
+			if ( programOptions.output_type == OutputType::verbose && programOptions.selected_server.empty())
+				std::cout << "Finding fastest server..." << std::endl;
+
+			if ( !programOptions.list ) {
+				if ( programOptions.output_type == OutputType::verbose )
+					std::cout << servers.size() << " Servers online" << std::endl;
+				else if ( programOptions.output_type == OutputType::json )
+					 std::cout << "\"servers_online\":" << servers.size() << ",";
+			}
+
 			server = sp.best_server(10, [&programOptions](bool success, const speedtest::Server& server, long ms) {
 				if (programOptions.output_type == OutputType::verbose)
 					std::cout << (success ? '.' : '*') << std::flush;
 			});
 
-		if ( programOptions.output_type == OutputType::verbose ) {
-
-			std::cout << std::endl;
-			std::cout << "Server: " << server.name <<
-				" " << server.host <<
-				" by " << server.sponsor <<
-				" (" << server.distance << " km from you): " <<
-				sp.latency() << " ms" <<
-				( recommended_chosen ? " (chosen by recommendation)" :
-					( server.recommended ? " (recommended by server)" : "" )) << std::endl;
-
-		} else if ( programOptions.output_type == OutputType::text ) {
-
-			std::cout << "TEST_SERVER_HOST=" << server.host << std::endl;
-			std::cout << "TEST_SERVER_DISTANCE=" << server.distance << std::endl;
-
-		} else if ( programOptions.output_type == OutputType::json ) {
-
-			std::cout << "\"server\":{" <<
-				"\"name\":\"" << server.name << "\"," <<
-				"\"sponsor\":\"" << server.sponsor << "\"," <<
-				"\"distance\":\"" << server.distance << "\"," <<
-				"\"latency\":\"" << sp.latency() << "\"," <<
-				"\"host\":\"" << server.host << "\"," <<
-				"\"recommended\":" << ( server.recommended ? "1" : "0" ) << "},";
+			if ( programOptions.output_type == OutputType::verbose )
+				std::cout << std::endl;
 		}
 
 	} else {
 
 		server.host.append(programOptions.selected_server);
-		sp.set_server(server);
+		sp.set_server(server, servers);
 
-		for ( auto &s : servers )
-			if ( s.host == server.host )
-				server.id = s.id;
+		recommended_chosen = server.recommended;
+	}
 
-		if ( programOptions.output_type == OutputType::verbose )
-			std::cout << "Selected server: " << server.host << std::endl;
-		else if ( programOptions.output_type == OutputType::text )
-			std::cout << "TEST_SERVER_HOST=" << server.host << std::endl;
-		else if ( programOptions.output_type == OutputType::json )
-			std::cout << "\"server\":{\"host\":\"" << server.host << "\"},";
+	if ( programOptions.output_type == OutputType::verbose ) {
+
+		std::cout << "Server #" << server.id << ": " << server.name <<
+			" " << server.host <<
+			" by " << server.sponsor <<
+			" (" << server.distance << " km from you): " <<
+			 sp.latency() << " ms" <<
+			( recommended_chosen ? " (chosen by recommendation)" :
+				( server.recommended ? " (recommended by server)" : "" )) << std::endl;
+
+	} else if ( programOptions.output_type == OutputType::text ) {
+
+		std::cout << "TEST_SERVER_HOST=" << server.host << std::endl;
+		std::cout << "TEST_SERVER_DISTANCE=" << server.distance << std::endl;
+
+	} else if ( programOptions.output_type == OutputType::json ) {
+
+		std::cout << "\"server\":{" <<
+			"\"name\":\"" << server.name << "\"," <<
+			"\"id\":" << server.id << "," <<
+			"\"sponsor\":\"" << server.sponsor << "\"," <<
+			"\"distance\":" << server.distance << "," <<
+			"\"latency\":" << std::fixed << sp.latency() << "," <<
+			"\"host\":\"" << server.host << "\"," <<
+			"\"recommended\":" << ( server.recommended ? "1" : "0" ) << "},";
 	}
 
 	if ( programOptions.output_type == OutputType::verbose )
@@ -171,7 +211,7 @@ int main(const int argc, const char **argv) {
 	else if ( programOptions.output_type == OutputType::text )
 		std::cout << "LATENCY=" << sp.latency() << std::endl;
 	else if ( programOptions.output_type == OutputType::json )
-		std::cout << "\"ping\":\"" << std::fixed << sp.latency() << "\",";
+		std::cout << "\"ping\":" << std::fixed << sp.latency() << ",";
 
 	long jitter = 0;
 
@@ -185,10 +225,10 @@ int main(const int argc, const char **argv) {
 		else if ( programOptions.output_type == OutputType::text )
 			std::cout << "JITTER=" << jitter << std::endl;
 		else if ( programOptions.output_type == OutputType::json )
-			std::cout << "\"jitter\":\"" << std::fixed << jitter << "\",";
+			std::cout << "\"jitter\":" << std::fixed << jitter << ",";
 	} else {
 		if ( programOptions.output_type == OutputType::json )
-			std::cout << "\"jitter\":\"-1\",";
+			std::cout << "\"jitter\":-1,";
 		else std::cerr << "Jitter measurement is unavailable at this time." << std::endl;
 	}
 
@@ -200,27 +240,34 @@ int main(const int argc, const char **argv) {
 		return EXIT_SUCCESS;
 	}
 
-	if ( programOptions.output_type == OutputType::verbose )
-		std::cout << "Determine line type (" << speedtest::Config::preflight.concurrency << ") " << std::flush;
+	speedtest::Profile profile(0);
 
-	double preSpeed = 0;
+	if ( !sp.profile(profile)) {
 
-	if ( !sp.download_speed(server, speedtest::Config::preflight, preSpeed, [&programOptions](bool success, double current_speed) {
 		if ( programOptions.output_type == OutputType::verbose )
-		std::cout << ( success ? '.' : '*' ) << std::flush;
-	})) {
+			std::cout << "Determine line type (" << speedtest::Config::preflight.concurrency << ") " << std::flush;
 
-		if ( programOptions.output_type == OutputType::json )
-			std::cout << "\"error\":\"pre-flight check failed\"}" << std::endl;
-		else std::cerr << "Pre-flight check failed." << std::endl;
+		double preSpeed = 0;
 
-		return EXIT_FAILURE;
+		if ( !sp.download_speed(server, speedtest::Config::preflight, preSpeed, [&programOptions](bool success, double current_speed) {
+			if ( programOptions.output_type == OutputType::verbose )
+				std::cout << ( success ? '.' : '*' ) << std::flush;
+		})) {
+
+			if ( programOptions.output_type == OutputType::json )
+				std::cout << "\"error\":\"pre-flight check failed\"}" << std::endl;
+			else std::cerr << "Pre-flight check failed." << std::endl;
+
+			return EXIT_FAILURE;
+		}
+
+		profile = speedtest::Profile(preSpeed);
 	}
 
 	if ( programOptions.output_type == OutputType::verbose )
 		std::cout << std::endl;
 
-	speedtest::Profile profile(preSpeed);
+	//speedtest::Profile profile(preSpeed);
 
 	if ( programOptions.output_type == OutputType::verbose )
 		std::cout << profile.description << " detected: profile selected " << profile.name << std::endl;
@@ -250,8 +297,10 @@ int main(const int argc, const char **argv) {
 					std::fixed << std::setprecision(2) <<
 					downloadSpeed << std::endl;
 			else if ( programOptions.output_type == OutputType::json )
-				std::cout << "\"download\":\"" <<
-					std::fixed << ( downloadSpeed * 1000 * 1000 ) << "\",";
+				std::cout << "\"download\":" <<
+					std::fixed << std::setprecision(2) <<
+					( downloadSpeed * 1000 * 1000 ) << ",\"download_mbit\":" <<
+					std::fixed << std::setprecision(2) << downloadSpeed << ",";
 
 		} else {
 
@@ -289,7 +338,9 @@ int main(const int argc, const char **argv) {
 			std::cout << "UPLOAD_SPEED=" <<
 				std::fixed << std::setprecision(2) << uploadSpeed << std::endl;
 		else if ( programOptions.output_type == OutputType::json )
-			std::cout << "\"upload\":\"" << std::fixed << ( uploadSpeed * 1000 * 1000 ) << "\",";
+			std::cout << "\"upload\":" << std::fixed << std::setprecision(2) <<
+				( uploadSpeed * 1000 * 1000 ) << ",\"upload_mbit\":" <<
+				std::fixed << std::setprecision(2) << uploadSpeed << ",";
 
 	} else {
 
