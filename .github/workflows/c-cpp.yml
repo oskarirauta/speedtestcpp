@@ -17,6 +17,6 @@ jobs:
     - uses: daaku/gh-action-apt-install@v4
       with:
         packages: libcurl4-openssl-dev
-        version: 1.0
+        #version: 1.0
     - name: make
       run: make
