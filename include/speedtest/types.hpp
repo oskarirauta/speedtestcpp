@@ -8,6 +8,7 @@ namespace speedtest {
 
 		std::string ip_address;
 		std::string isp;
+		std::string country;
 		float lat, lon;
 	};
 
