@@ -18,4 +18,4 @@ jobs:
         packages: curl libcurl4 libcurl4-openssl-dev
         #version: 1.0
     - name: compile
-      run: make
+      run: SPEEDTEST_LINK_SHARED=yes make
