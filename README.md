@@ -35,7 +35,7 @@ $ make
 
 to build statically linked, provide `SPEEDTEST_LINK_SHARED=yes` environment variable for make.
 ```
-$ SPEEDTEST_LINK_SHARED=no make
+$ SPEEDTEST_LINK_SHARED=yes make
 ```
 
 Built default targets are static and shared library, speedtest cli program and minitest.
