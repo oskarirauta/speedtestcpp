@@ -13,10 +13,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Cache apt-install libcurl
     - uses: daaku/gh-action-apt-install@v4
       with:
         packages: libcurl4-openssl-dev
         #version: 1.0
-    - name: make
+    - name: compile
       run: make
