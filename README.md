@@ -3,7 +3,7 @@
 Yet another unofficial speedtest.net client cli interface
 
 It supports the new (undocumented) raw TCP protocol for better accuracy.
-Based on taganaka's good work at (https://github.com/taganaka/SpeedTest)[https://github.com/taganaka/SpeedTest]
+Based on taganaka's good work at https://github.com/taganaka/SpeedTest
 
 ## Features
 
