@@ -1,16 +1,17 @@
-[![Build Status](https://travis-ci.org/taganaka/SpeedTest.svg?branch=master)](https://travis-ci.org/taganaka/SpeedTest)
-
-# SpeedTest++
+# SpeedTestCpp
 
 Yet another unofficial speedtest.net client cli interface
 
 It supports the new (undocumented) raw TCP protocol for better accuracy.
+Based on taganaka's good work at (https://github.com/taganaka/SpeedTest)[https://github.com/taganaka/SpeedTest]
 
 ## Features
 
-1. Best server discovery based on speed and distance from you.
+1. Automatic server selection, unless manual selection desired or
+   best server discovery based on speed and distance from you is wanted.
 
-2. Line type discovery to select the best test profile based on your line speed.
+2. Automatic profile, unless unavailable or not desired, in that case;
+   Line type discovery to select the best test profile based on your line speed.
 
 3. Aggressive multi-threading program in order to saturate your bandwidth quickly.
 
@@ -18,66 +19,54 @@ It supports the new (undocumented) raw TCP protocol for better accuracy.
 
 5. Provide a URL to the speedtest.net share results image using option --share
 
-## Installation
+## Installing
 
 ### Requirements
 
 1. A modern C++ compiler
-2. cmake
+2. make
 3. libcurl
-4. libssl
-5. libxml2
 
-### On Mac OS X
+### Building
 
 ```
-$ brew install cmake
-$ cd cmake_build
-$ cmake -DCMAKE_BUILD_TYPE=Release ..
-$ make install
+$ make
 ```
 
-### On Ubuntu/Debian
-
+to build statically linked, provide `SPEEDTEST_LINK_SHARED=yes` environment variable for make.
 ```
-$ sudo apt-get install build-essential libcurl4-openssl-dev libxml2-dev libssl-dev cmake
-$ git clone https://github.com/taganaka/SpeedTest
-$ cd SpeedTest
-$ cmake -DCMAKE_BUILD_TYPE=Release .
-$ sudo make install
+$ SPEEDTEST_LINK_SHARED=yes make
 ```
 
-### On OpenSuse
-
-```
-$ sudo zypper install cmake gcc-c++ libcurl-devel libxml2-devel libopenssl-devel git
-$ git clone https://github.com/taganaka/SpeedTest
-$ cd SpeedTest
-$ cmake -DCMAKE_BUILD_TYPE=Release .
-$ sudo make install
-```
+Built default targets are static and shared library, speedtest cli program and minitest.
+Install process is manual, where you copy shared library to your shared library path with necessary
+symlinks unless you built static targets. Next copy provided binaries to your bin path.
 
 ## Usage
 
 ```
-$ ./SpeedTest --help
-SpeedTest++ version 1.8
+$ ./speedtest --help
+SpeedTest++ version 1.20.0
 Speedtest.net command line interface
-Info: https://github.com/taganaka/SpeedTest
+Info: https://github.com/oskarirauta/speedtestcpp
 Author: Francesco Laurita <francesco.laurita@gmail.com>
+Co-authored-by: Oskari Rauta <oskari.rauta@gmail.com>
 
 Usage: ./SpeedTest  [--latency] [--quality] [--download] [--upload] [--share] [--help]
-      [--test-server host:port] [--quality-server host:port] [--output verbose|text]
+      [--test-server host:port] [--output verbose|text|json]
+
 optional arguments:
   --help                      Show this message and exit
+  --list-servers              Show list of servers
   --latency                   Perform latency test only
-  --quality                   Perform quality test only. It includes latency test
   --download                  Perform download test only. It includes latency test
   --upload                    Perform upload test only. It includes latency test
   --share                     Generate and provide a URL to the speedtest.net share results image
+  --insecure                  Skip SSL certificate verify (Useful for Embedded devices)
   --test-server host:port     Run speed test against a specific server
-  --quality-server host:port  Run line quality test against a specific server
-  --output verbose|text       Set output type. Default: verbose
+  --force-by-latency-test     Always select server based on local latency test
+  --output verbose|text|json  Set output type. Default: verbose
+
 $
 ```
 
