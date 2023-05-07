@@ -7,7 +7,7 @@ std::string getAttributeValue(const std::string& data, const size_t offset, cons
 
         size_t pos = data.find(attribute_name + "=\"", offset);
 
-        if ( pos == std::string::npos || pos >= max_pos )
+        if (( pos == std::string::npos ) || ( pos >= max_pos ))
                 return "";
 
         size_t value_pos = pos + attribute_name.length() + 2;

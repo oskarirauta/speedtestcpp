@@ -9,6 +9,24 @@ const speedtest::Config speedtest::Config::preflight = {
 	2			// Concurrency
 };
 
+const speedtest::Profile speedtest::Profile::uninitialized = {
+	{ // Download
+		-1,		// start_size
+		-1,		// max_size
+		-1,		// inc_size
+		-1,		// buff_size
+		-1,		// min_test_time_ms
+		-1		// Concurrency
+	}, { // Upload
+		-1,		// start_size
+		-1,		// max_size
+		-1,		// inc_size
+		-1,		// buff_size
+		-1,		// min_test_time_ms
+		-1		// Concurrency
+	}, "", ""
+};
+
 const speedtest::Profile speedtest::Profile::slowband = {
 	{ // Download
 		100000,		// start_size
@@ -24,8 +42,7 @@ const speedtest::Profile speedtest::Profile::slowband = {
 		1024,		// buff_size
 		20000,		// min_test_time_ms
 		2		// Concurrency
-	},
-	"slowband", "Very-slow-line line type"
+	}, "slowband", "Very-slow-line line type"
 };
 
 const speedtest::Profile speedtest::Profile::narrowband = {
@@ -88,7 +105,7 @@ speedtest::Profile::Profile(const double preSpeed) :
 		name(speedtest::Profile::slowband.name),
 		description(speedtest::Profile::slowband.description) {
 
-	if ( preSpeed > 4 && preSpeed <= 30 ) {
+	if ( /*preSpeed > 4 &&*/ preSpeed <= 30 ) {
 
 		this -> download = speedtest::Profile::narrowband.download;
 		this -> upload = speedtest::Profile::narrowband.upload;
