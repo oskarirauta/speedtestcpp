@@ -4,7 +4,7 @@ CXX?=g++
 CXXFLAGS?=--std=c++23 -Wall -fPIC
 LDFLAGS?=-L/lib -L/usr/lib
 
-INCLUDES+= -I./examples
+INCLUDES+= -I./examples/include
 
 USE_OLD_SERVER_LIST?=0
 SPEEDTEST_LINK_SHARED?=no
