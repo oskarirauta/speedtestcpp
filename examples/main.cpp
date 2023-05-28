@@ -1,6 +1,8 @@
 #include <iostream>
 #include <iomanip>
 #include <csignal>
+#include <thread>
+#include <mutex>
 #include <map>
 
 #include "speedtest/speedtest.hpp"
@@ -272,26 +274,35 @@ int main(const int argc, const char **argv) {
 	if ( programOptions.output_type == OutputType::verbose )
 		std::cout << profile.description << " detected: profile selected " << profile.name << std::endl;
 
+	std::mutex output_mutex;
+
 	if ( !programOptions.upload ) {
 
 		if ( programOptions.output_type == OutputType::verbose ) {
 			std::cout << std::endl;
-			std::cout << "Testing download speed (" << profile.download.concurrency << ") "  << std::flush;
+			std::cout << "Testing download speed (" << profile.download.concurrency << "):"  << std::flush;
 		}
 
 		double downloadSpeed = 0;
 
-		if ( sp.download_speed(server, profile.download, downloadSpeed, [&programOptions](bool success, long current_speed) {
+		if ( sp.download_speed(server, profile.download, downloadSpeed, [&programOptions, &profile, &output_mutex](bool success, long current_speed) {
 
-			if ( programOptions.output_type == OutputType::verbose )
-				std::cout << (success ? '.' : '*') << std::flush;
+			if ( programOptions.output_type == OutputType::verbose && success ) {
+				output_mutex.lock();
+				std::cout << "\rTesting download speed (" <<
+					profile.download.concurrency << "): " <<
+					std::setprecision(2) <<
+					(double)(current_speed / 1000 / 1000 * profile.download.concurrency ) <<
+					" Mbit/s" << "          " << std::flush;
+				output_mutex.unlock();
+			}
 
 		})) {
 
 			if ( programOptions.output_type == OutputType::verbose )
-				std::cout << "\nDownload: " <<
-					std::fixed << std::setprecision(2) <<
-					downloadSpeed << " Mbit/s" << std::endl;
+				std::cout << "\rDownload: " <<
+					std::fixed << std::setprecision(2) << downloadSpeed <<
+					" Mbit/s" << "                                    " << std::endl;
 			else if ( programOptions.output_type == OutputType::text )
 				std::cout << "DOWNLOAD_SPEED=" <<
 					std::fixed << std::setprecision(2) <<
@@ -306,7 +317,9 @@ int main(const int argc, const char **argv) {
 
 			if ( programOptions.output_type == OutputType::json )
 				std::cout << "\"error\":\"download test failed\"}" << std::endl;
-			else std::cerr << "Download test failed." << std::endl;
+			else if ( programOptions.output_type == OutputType::verbose )
+				std::cout << "\rDownload test failed." << std::endl;
+			else std::cerr << "\nDownload test failed." << std::endl;
 
 			return EXIT_FAILURE;
 		}
@@ -325,15 +338,24 @@ int main(const int argc, const char **argv) {
 
 	double uploadSpeed = 0;
 
-	if ( sp.upload_speed(server, profile.upload, uploadSpeed, [&programOptions](bool success, double current_speed) {
+	if ( sp.upload_speed(server, profile.upload, uploadSpeed, [&programOptions, &profile, &output_mutex](bool success, double current_speed) {
 
-		if ( programOptions.output_type == OutputType::verbose )
-			std::cout << ( success ? '.' : '*' ) << std::flush;
+		if ( programOptions.output_type == OutputType::verbose && success ) {
+				output_mutex.lock();
+				std::cout << "\rTesting upload speed (" <<
+					profile.upload.concurrency << "): " <<
+					std::setprecision(2) <<
+					(double)(current_speed / 1000 / 1000 * profile.download.concurrency ) <<
+					" Mbit/s" << "          " << std::flush;
+				output_mutex.unlock();
+			}
+
 	})) {
 
 		if ( programOptions.output_type == OutputType::verbose )
-			std::cout << "\nUpload: " <<
-				std::fixed << std::setprecision(2) << uploadSpeed << " Mbit/s" << std::endl;
+			std::cout << "\rUpload: " <<
+				std::fixed << std::setprecision(2) << uploadSpeed <<
+				" Mbit/s" << "                                    " << std::endl;
 		else if ( programOptions.output_type == OutputType::text )
 			std::cout << "UPLOAD_SPEED=" <<
 				std::fixed << std::setprecision(2) << uploadSpeed << std::endl;
@@ -346,7 +368,9 @@ int main(const int argc, const char **argv) {
 
 		if ( programOptions.output_type == OutputType::json )
 			std::cout << "\"error\":\"upload test failed\"}" << std::endl;
-		else std::cerr << "Upload test failed." << std::endl;
+		else if ( programOptions.output_type == OutputType::verbose )
+			std::cout << "\rUpload test failed." << std::endl;
+		else std::cout << "\nUpload test failed." << std::endl;
 
 		return EXIT_FAILURE;
 	}
