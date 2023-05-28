@@ -7,7 +7,7 @@ LDFLAGS?=-L/lib -L/usr/lib
 INCLUDES+= -I./examples/include
 
 USE_OLD_SERVER_LIST?=0
-SPEEDTEST_LINK_SHARED?=no
+SPEEDTEST_LINK_SHARED?=yes
 SPEEDTEST_DIR:=.
 
 include Makefile.inc
