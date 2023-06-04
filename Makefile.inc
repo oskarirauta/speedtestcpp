@@ -59,13 +59,3 @@ objs/sp_xml_servers_parser.o: $(SPEEDTEST_DIR)/src/xml_servers_parser.cpp
 
 objs/sp_speedtest.o: $(SPEEDTEST_DIR)/src/speedtest.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<;
-
-$(SPEEDTEST_DIR)/$(SPEEDTEST_SHARED_LIB): $(SPEEDTEST_OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(SPEEDTEST_LIBS) $^ -o $@;
-	$(LN) -s $(SPEEDTEST_SHARED_LIB) $(SPEEDTEST_DIR)/libspeedtestcpp.so
-
-$(SPEEDTEST_DIR)/$(SPEEDTEST_STATIC_LIB): $(SPEEDTEST_OBJS)
-	$(AR) rcs $@ $+
-
-.PHONY: $(SPEEDTEST_DIR)/libspeedtestcpp.so
-$(SPEEDTEST_DIR)/libspeedtestcpp.so: $(SPEEDTEST_DIR)/$(SPEEDTEST_SHARED_LIB)

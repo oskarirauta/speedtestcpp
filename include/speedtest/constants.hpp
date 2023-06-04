@@ -4,7 +4,7 @@
 
 namespace speedtest {
 
-	static const std::string version = "1.20.1";
+	static const std::string version = "1.20.2";
 	static const std::string git_commit =
 #ifdef SPEEDTEST_GIT_COMMIT
 	SPEEDTEST_GIT_COMMIT;

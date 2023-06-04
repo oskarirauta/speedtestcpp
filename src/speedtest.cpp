@@ -7,7 +7,7 @@
 #include "speedtest/speedtest.hpp"
 
 speedtest::SpeedTest::SpeedTest(bool insecure, float minServerVersion): _latency(0), _uploadSpeed(0), _downloadSpeed(0),
-					_bytesReceived(0), _bytesSent(0), _profile(speedtest::Profile::uninitialized) {
+					_bytesReceived(0), _bytesSent(0), _profile(speedtest::Profile::uninitialized()) {
 
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	this -> _strict_ssl_verify = !insecure;

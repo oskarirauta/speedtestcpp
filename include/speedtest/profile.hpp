@@ -24,11 +24,11 @@ namespace speedtest {
 		Profile(speedtest::Config download, speedtest::Config upload, std::string name, std::string description) :
 			download(download), upload(upload), name(name), description(description) {};
 
-		static const speedtest::Profile uninitialized;
-		static const speedtest::Profile slowband;
-		static const speedtest::Profile narrowband;
-		static const speedtest::Profile broadband;
-		static const speedtest::Profile fiber;
+		static const speedtest::Profile uninitialized();
+		static const speedtest::Profile slowband();
+		static const speedtest::Profile narrowband();
+		static const speedtest::Profile broadband();
+		static const speedtest::Profile fiber();
 	};
 
 }
