@@ -1,5 +1,5 @@
 USE_OLD_SERVER_LIST?=0
-SPEEDTEST_DIR?=speedtestcpp
+SPEEDTEST_DIR?=speedtest
 
 CXXFLAGS?=--std=c++23
 LDFLAGS?=-L/lib -L/usr/lib
