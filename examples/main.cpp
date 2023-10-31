@@ -285,12 +285,13 @@ int main(const int argc, const char **argv) {
 
 		double downloadSpeed = 0;
 
-		if ( sp.download_speed(server, profile.download, downloadSpeed, [&programOptions, &profile, &output_mutex](bool success, long current_speed) {
+		if ( sp.download_speed(server, profile.download, downloadSpeed, [&programOptions, &profile, &output_mutex](bool success, double current_speed) {
 
 			if ( programOptions.output_type == OutputType::verbose && success ) {
 				output_mutex.lock();
 				std::cout << "\rTesting download speed (" <<
 					profile.download.concurrency << "): " <<
+					std::fixed << std::showpoint <<
 					std::setprecision(2) <<
 					(double)(current_speed / 1000 / 1000 * profile.download.concurrency ) <<
 					" Mbit/s" << "          " << std::flush;
@@ -301,15 +302,15 @@ int main(const int argc, const char **argv) {
 
 			if ( programOptions.output_type == OutputType::verbose )
 				std::cout << "\rDownload: " <<
-					std::fixed << std::setprecision(2) << downloadSpeed <<
+					std::fixed << std::setprecision(2) << std::showpoint << downloadSpeed <<
 					" Mbit/s" << "                                    " << std::endl;
 			else if ( programOptions.output_type == OutputType::text )
 				std::cout << "DOWNLOAD_SPEED=" <<
-					std::fixed << std::setprecision(2) <<
+					std::fixed << std::showpoint << std::setprecision(2) <<
 					downloadSpeed << std::endl;
 			else if ( programOptions.output_type == OutputType::json )
 				std::cout << "\"download\":" <<
-					std::fixed << std::setprecision(2) <<
+					std::fixed << std::showpoint << std::setprecision(2) <<
 					( downloadSpeed * 1000 * 1000 ) << ",\"download_mbit\":" <<
 					std::fixed << std::setprecision(2) << downloadSpeed << ",";
 
@@ -344,6 +345,7 @@ int main(const int argc, const char **argv) {
 				output_mutex.lock();
 				std::cout << "\rTesting upload speed (" <<
 					profile.upload.concurrency << "): " <<
+					std::fixed << std::showpoint <<
 					std::setprecision(2) <<
 					(double)(current_speed / 1000 / 1000 * profile.download.concurrency ) <<
 					" Mbit/s" << "          " << std::flush;
@@ -354,15 +356,15 @@ int main(const int argc, const char **argv) {
 
 		if ( programOptions.output_type == OutputType::verbose )
 			std::cout << "\rUpload: " <<
-				std::fixed << std::setprecision(2) << uploadSpeed <<
+				std::fixed << std::showpoint << std::setprecision(2) << uploadSpeed <<
 				" Mbit/s" << "                                    " << std::endl;
 		else if ( programOptions.output_type == OutputType::text )
 			std::cout << "UPLOAD_SPEED=" <<
-				std::fixed << std::setprecision(2) << uploadSpeed << std::endl;
+				std::fixed << std::showpoint << std::setprecision(2) << uploadSpeed << std::endl;
 		else if ( programOptions.output_type == OutputType::json )
 			std::cout << "\"upload\":" << std::fixed << std::setprecision(2) <<
 				( uploadSpeed * 1000 * 1000 ) << ",\"upload_mbit\":" <<
-				std::fixed << std::setprecision(2) << uploadSpeed << ",";
+				std::fixed << std::showpoint << std::setprecision(2) << uploadSpeed << ",";
 
 	} else {
 
