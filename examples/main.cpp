@@ -347,7 +347,7 @@ int main(const int argc, const char **argv) {
 					profile.upload.concurrency << "): " <<
 					std::fixed << std::showpoint <<
 					std::setprecision(2) <<
-					(double)(current_speed / 1000 / 1000 * profile.download.concurrency ) <<
+					(double)(current_speed / 1000 / 1000 * profile.upload.concurrency ) <<
 					" Mbit/s" << "          " << std::flush;
 				output_mutex.unlock();
 			}
