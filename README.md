@@ -33,9 +33,9 @@ Based on taganaka's good work at https://github.com/taganaka/SpeedTest
 $ make
 ```
 
-to build statically linked, provide `SPEEDTEST_LINK_SHARED=yes` environment variable for make.
+to build statically linked, provide `SPEEDTEST_LINK_SHARED=no` environment variable for make.
 ```
-$ SPEEDTEST_LINK_SHARED=yes make
+$ SPEEDTEST_LINK_SHARED=no make
 ```
 
 Built default targets are static and shared library, speedtest cli program and minitest.
