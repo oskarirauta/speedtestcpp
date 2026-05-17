@@ -20,7 +20,7 @@
 namespace speedtest {
 
 	class Client;
-	typedef bool (speedtest::Client::*opFn)(const long size, const long chunk_size, long &ms);
+	typedef bool (speedtest::Client::*opFn)(const long size, const long chunk_size, double &ms);
 	typedef void (*progressFn)(bool success);
 
 	class SpeedTest {

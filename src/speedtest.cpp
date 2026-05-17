@@ -1,4 +1,5 @@
 #include <iomanip>
+#include <atomic>
 #include <netdb.h>
 #include <sys/utsname.h>
 
@@ -190,24 +191,27 @@ bool speedtest::SpeedTest::jitter(const speedtest::Server &server, long& result,
 
 	auto client = speedtest::Client(server);
 	double current_jitter = 0;
-	long previous_ms = LONG_MAX;
+	double previous_ms = -1;
+	int measurements = 0;
 
 	if ( !client.connect())
 		return false;
 
 	for ( int i = 0; i < sample; i++ ) {
 
-		long ms = 0;
+		double ms = 0;
 
 		if ( client.ping(ms)) {
-			if ( previous_ms == LONG_MAX )
-				previous_ms = ms;
-			else current_jitter += std::abs(previous_ms - ms);
+			if ( previous_ms >= 0 ) {
+				current_jitter += std::abs(previous_ms - ms);
+				measurements++;
+			}
+			previous_ms = ms;   // <-- puuttui
 		}
 	}
 
 	client.close();
-	result = (long) std::floor(current_jitter / sample);
+	result = measurements > 0 ? (long) std::floor(current_jitter / measurements) : 0;
 	return true;
 }
 
@@ -232,7 +236,6 @@ bool speedtest::SpeedTest::share(const speedtest::Server& server, std::string& i
 	post_data <<
 		"recommendedserverid=" << this -> recommended_server_id(server)/* server.id*/ << "&" <<
 		"ping=" << std::setprecision(0) << std::fixed << this -> _latency << "&" <<
-		"screenresolution=&" <<
 		"screendpi=&" <<
 		"promo=&" <<
 		"download=" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) << "&" <<
@@ -304,82 +307,94 @@ const int speedtest::SpeedTest::recommended_server_id(const speedtest::Server &f
 	return fallback.id;
 }
 
-double speedtest::SpeedTest::execute(const speedtest::Server &server, const speedtest::Config &config, unsigned long &bytes_total, const opFn &pfunc, std::function<void(bool, double)> cb) {
+double speedtest::SpeedTest::execute(const speedtest::Server &server, const speedtest::Config &config,
+        unsigned long &bytes_total, const opFn &pfunc, std::function<void(bool, double)> cb) {
 
 	std::vector<std::thread> workers;
-	double overall_speed = 0;
-	std::mutex mtx;
+
+	std::atomic<long long> shared_bytes{0};   // all transferred bytes by all threads combined
+	std::atomic<int>       active{config.concurrency};
+	std::mutex             cb_mtx;            // serializes callbacks
 
 	bytes_total = 0;
+	const auto test_start = std::chrono::steady_clock::now();
 
-	for ( int i = 0; i < config.concurrency; i++ ) {
+	// --- worker threads: only move data, not calculating speed ---
+	for (int i = 0; i < config.concurrency; i++) {
 
-		workers.push_back(std::thread([&server, &overall_speed, &bytes_total, &pfunc, &config, &mtx, cb]() {
+		workers.emplace_back([&]() {
 
 			speedtest::Client client(server);
 
-			long start_size = config.start_size;
-			long max_size   = config.max_size;
-			long incr_size  = config.incr_size;
-			long curr_size  = start_size;
+			if (!client.connect()) {
+				active--;
+				if (cb) { std::lock_guard<std::mutex> lk(cb_mtx); cb(false, -1); }
+				return;
+			}
 
-			if ( client.connect()) {
+			long curr_size = config.start_size;
 
-				long total_size = 0;
-				long total_time = 0;
-				auto start = std::chrono::steady_clock::now();
-				std::vector<double> partial_results;
+			while (curr_size < config.max_size) {
 
-				while ( curr_size < max_size ) {
+				const auto now = std::chrono::steady_clock::now();
+				if (std::chrono::duration_cast<std::chrono::milliseconds>(now - test_start).count()
+				        >= config.min_test_time_ms)
+					break;
 
-					long op_time = 0;
+				double op_time = 0;
 
-					if (( client.*pfunc)(curr_size, config.buff_size, op_time)) {
-
-						total_size += curr_size;
-						total_time += op_time;
-						double metric = ( curr_size * 8 ) / (static_cast<double>(op_time) / 1000);
-						partial_results.push_back(metric);
-
-						if ( cb ) cb(true, metric);
-					} else if ( cb ) cb(false, -1);
-
-					curr_size += incr_size;
-					auto stop = std::chrono::steady_clock::now();
-
-					if ( std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count() > config.min_test_time_ms )
-						break;
+				if ((client.*pfunc)(curr_size, config.buff_size, op_time))
+					shared_bytes.fetch_add(curr_size);
+				else {
+					if (cb) { std::lock_guard<std::mutex> lk(cb_mtx); cb(false, -1); }
+					break;
 				}
 
-				client.close();
-				std::sort(partial_results.begin(), partial_results.end());
+				curr_size += config.incr_size;
+			}
 
-				size_t skip = partial_results.size() >= 10 ? ( partial_results.size() / 4 ) : 0;
-				size_t drop = partial_results.size() >= 10 ? 2 : 0;
-				size_t iter = 0;
-				double real_sum = 0;
-
-				for ( auto it = partial_results.begin() + skip; it != partial_results.end() - drop; ++it ) {
-
-					iter++;
-					real_sum += (*it);
-				}
-
-				mtx.lock();
-				overall_speed += ( real_sum / iter );
-				bytes_total += total_size;
-				mtx.unlock();
-			} else if ( cb ) cb(false, -1);
-		}));
-
+			client.close();
+			active--;
+		});
 	}
 
-	for ( auto &t : workers )
-		t.join();
+	// --- reporter thread, ONE combined value for whole test ---
+	std::thread reporter([&]() {
 
+		using namespace std::chrono;
+
+		while (active.load() > 0) {
+
+			std::this_thread::sleep_for(milliseconds(200));
+
+			const auto      now        = steady_clock::now();
+			const double    elapsed_ms = duration_cast<microseconds>(now - test_start).count() / 1000.0;
+			const long long bytes      = shared_bytes.load();
+
+			if (cb && elapsed_ms > 200.0 && bytes > 0) {
+				double kbps = (bytes * 8.0) / (elapsed_ms / 1000.0) / 1000.0; // Kbit/s
+				std::lock_guard<std::mutex> lk(cb_mtx);
+				cb(true, kbps);
+			}
+		}
+	});
+
+	for (auto &t : workers)
+		t.join();
+	reporter.join();
 	workers.clear();
 
-	return overall_speed / 1000 / 1000;
+	// --- result: all bytes / time spent by whole test
+	const auto      test_stop = std::chrono::steady_clock::now();
+	const double    total_ms  = std::chrono::duration_cast<std::chrono::microseconds>(test_stop - test_start).count() / 1000.0;
+	const long long bytes     = shared_bytes.load();
+
+	bytes_total = static_cast<unsigned long>(bytes);
+
+	if (total_ms <= 0.0)
+		return 0.0;
+
+	return (bytes * 8.0) / (total_ms / 1000.0) / 1000.0; // Kbit/s
 }
 
 CURLcode speedtest::SpeedTest::http_get(const std::string &url, std::stringstream &ss, CURL *handler, long timeout) {
@@ -599,7 +614,7 @@ bool speedtest::SpeedTest::test_latency(speedtest::Client &client, const int sam
 		return false;
 
 	latency = INT_MAX;
-	long temp_latency = 0;
+	double temp_latency = 0;
 
 	for ( int i = 0; i < sample_size; i++ ) {
 
