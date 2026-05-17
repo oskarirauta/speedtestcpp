@@ -73,6 +73,13 @@ bool speedtest::SpeedTest::get_profile_info(const std::string &data) {
 
 	long dl_length, dl_concurrency;
 
+	// Download specific parameters since server configuration doesn't give
+	// them, so we use static values suitable for download
+
+	const long dl_start = 1000000;    //   1 MB
+	const long dl_max   = 100000000;  // 100 MB
+	const long dl_incr  = 750000;
+
 	std::map<std::string, std::string> upload_info;
 	std::map<std::string, std::string> server_info;
 	std::map<std::string, std::string> download_info;
@@ -147,7 +154,7 @@ bool speedtest::SpeedTest::get_profile_info(const std::string &data) {
 
 	this -> _profile = {
 		{ // Download
-			ul_start, ul_max, ul_incr, bufsize, dl_length, (int)dl_concurrency
+			dl_start, dl_max, dl_incr, bufsize, dl_length, (int)dl_concurrency
 		}, { // Upload
 			ul_start, ul_max, ul_incr, bufsize, ul_length, (int)ul_concurrency
 		} , "from server configuration", "server selected profile" };
