@@ -173,23 +173,30 @@ bool speedtest::Client::upload(const long size, const long chunk_size, double &m
 
 bool speedtest::Client::mk_socket() {
 
-	if ( this -> _fd = socket(AF_INET, SOCK_STREAM, 0); this -> _fd < 0 )
+	if ( this -> _fd = socket(AF_INET, SOCK_STREAM, 0); this -> _fd < 0 ) {
+		this -> _fd = 0;
 		return false;
+	}
 
 	auto hostp = this -> host();
 #if __APPLE__
 	struct hostent *server = gethostbyname(hostp.first.c_str());
-	if ( server == nullptr )
+	if ( server == nullptr ) {
+		::close(this -> _fd);
+		this -> _fd = 0;
 		return false;
+	}
 #else
 	struct hostent server;
 	char tmpbuf[BUFSIZ];
 	struct hostent *result;
 	int errnop;
 
-	if ( gethostbyname_r(hostp.first.c_str(), &server, (char *)&tmpbuf, BUFSIZ, &result, &errnop))
+	if ( gethostbyname_r(hostp.first.c_str(), &server, (char *)&tmpbuf, BUFSIZ, &result, &errnop)) {
+		::close(this -> _fd);
+		this -> _fd = 0;
 		return false;
-
+	}
 #endif
 
 	int portno = hostp.second;
@@ -205,7 +212,13 @@ bool speedtest::Client::mk_socket() {
 
 	serv_addr.sin_port = htons(static_cast<uint16_t>(portno));
 
-	return ::connect(this -> _fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) >= 0;
+	if ( ::connect(this -> _fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0 ) {
+		::close(this -> _fd);
+		this -> _fd = 0;
+		return false;
+	}
+
+	return true;
 }
 
 float speedtest::Client::version() {
