@@ -21,9 +21,9 @@ namespace speedtest {
 			~Client();
 
 			bool connect();
-			bool ping(long &ms);
-			bool upload(long size, long chunk_size, long &ms);
-			bool download(long size, long chunk_size, long &ms);
+			bool ping(double &ms);
+			bool upload(long size, long chunk_size, double &ms);
+			bool download(long size, long chunk_size, double &ms);
 			void close();
 
 			float version();
@@ -43,6 +43,6 @@ namespace speedtest {
 
 	};
 
-	typedef bool (Client::*opFn)(const long size, const long chunk_size, long &ms);
+	typedef bool (Client::*opFn)(const long size, const long chunk_size, double &ms);
 
 }

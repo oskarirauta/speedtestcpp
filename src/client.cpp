@@ -47,9 +47,10 @@ void speedtest::Client::close() {
 
 	speedtest::Client::write("QUIT");
 	::close(this -> _fd);
+	this -> _fd = 0;
 }
 
-bool speedtest::Client::ping(long &ms) {
+bool speedtest::Client::ping(double &ms) {
 
 	if ( !this -> _fd )
 		return false;
@@ -57,15 +58,15 @@ bool speedtest::Client::ping(long &ms) {
 	std::stringstream cmd;
 	std::string reply;
 
-	auto start = std::chrono::steady_clock::now();
+	auto start = std::chrono::high_resolution_clock::now();
 	cmd << "PING " << start.time_since_epoch().count();
 
 	if ( !this -> write(cmd.str()))
         	return false;
 
 	if ( this -> read(reply) && reply.substr(0, 5) == "PONG " ) {
-		auto stop = std::chrono::steady_clock::now();
-		ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
+		auto stop = std::chrono::high_resolution_clock::now();
+		ms = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000.0;
 		return true;
 	}
 
@@ -73,7 +74,7 @@ bool speedtest::Client::ping(long &ms) {
 	return false;
 }
 
-bool speedtest::Client::download(const long size, const long chunk_size, long &ms) {
+bool speedtest::Client::download(const long size, const long chunk_size, double &ms) {
 
 	std::stringstream cmd;
 	cmd << "DOWNLOAD " << size;
@@ -86,9 +87,9 @@ bool speedtest::Client::download(const long size, const long chunk_size, long &m
 		buff[i] = '\0';
 
 	long missing = 0;
-	auto start = std::chrono::steady_clock::now();
+	auto start = std::chrono::high_resolution_clock::now();
 
-	while ( missing != size ) {
+	while ( missing < size ) {
 		auto current = this -> read(buff, chunk_size);
 
 		if ( current <= 0 ) {
@@ -99,13 +100,14 @@ bool speedtest::Client::download(const long size, const long chunk_size, long &m
 		missing += current;
 	}
 
-	auto stop = std::chrono::steady_clock::now();
-	ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
+	auto stop = std::chrono::high_resolution_clock::now();
+	ms = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000.0;
+
 	delete[] buff;
 	return true;
 }
 
-bool speedtest::Client::upload(const long size, const long chunk_size, long &ms) {
+bool speedtest::Client::upload(const long size, const long chunk_size, double &ms) {
 
 	std::stringstream cmd;
 	cmd << "UPLOAD " << size << "\n";
@@ -117,7 +119,7 @@ bool speedtest::Client::upload(const long size, const long chunk_size, long &ms)
 		buff[i] = static_cast<char>(rand() % 256);
 
 	long missing = size;
-	auto start = std::chrono::steady_clock::now();
+	auto start = std::chrono::high_resolution_clock::now();
 
 	if ( !this -> write(cmd.str())) {
 		delete[] buff;
@@ -159,11 +161,11 @@ bool speedtest::Client::upload(const long size, const long chunk_size, long &ms)
 		return false;
 	}
 
-	auto stop = std::chrono::steady_clock::now();
+	auto stop = std::chrono::high_resolution_clock::now();
 
 	std::stringstream ss;
 	ss << "OK " << size << " ";
-	ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
+	ms = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000.0;
 	delete[] buff;
 
 	return reply.substr(0, ss.str().length()) == ss.str();
@@ -171,7 +173,7 @@ bool speedtest::Client::upload(const long size, const long chunk_size, long &ms)
 
 bool speedtest::Client::mk_socket() {
 
-	if ( this -> _fd = socket(AF_INET, SOCK_STREAM, 0); !this -> _fd )
+	if ( this -> _fd = socket(AF_INET, SOCK_STREAM, 0); this -> _fd < 0 )
 		return false;
 
 	auto hostp = this -> host();
@@ -230,7 +232,7 @@ bool speedtest::Client::read(std::string &buffer) {
 	while( true ) {
 
 		auto n = this -> read(&c, 1);
-		if ( n == -1 )
+		if ( n < -1 )
 			return false;
 		if ( c == '\n' || c == '\r' )
 			break;
