@@ -83,6 +83,7 @@ bool speedtest::SpeedTest::get_profile_info(const std::string &data) {
 	std::map<std::string, std::string> upload_info;
 	std::map<std::string, std::string> server_info;
 	std::map<std::string, std::string> download_info;
+	std::map<std::string, std::string> socket_upload_info;
 
 	if ( config.parse("upload", { "testlength", "ratio", "mintestsize", "threads", "maxchunksize", "maxchunkcount", "threadsperurl" }, upload_info) &&
 		speedtest::xml::all_attributes_found({"testlength", "ratio", "mintestsize", "threads", "maxchunksize", "maxchunkcount", "threadsperurl"}, upload_info) &&
@@ -91,7 +92,6 @@ bool speedtest::SpeedTest::get_profile_info(const std::string &data) {
 
 		ul_ratio = std::stoi(upload_info["ratio"]);
 		ul_maxchunkcount = std::stoi(upload_info["maxchunkcount"]);
-		ul_length = std::stoi(upload_info["testlength"]);
 		ul_concurrency = std::stoi(upload_info["threads"]);
 
 		switch ( ul_ratio > 6 ? 6 : ul_ratio ) {
@@ -133,7 +133,6 @@ bool speedtest::SpeedTest::get_profile_info(const std::string &data) {
 
 		int upload_count = std::ceil((double)ul_maxchunkcount / (double)ul_cnt);
 		ul_incr = std::ceil((double)(ul_max - ul_start) / (double)upload_count);
-		ul_length = ul_length * ul_concurrency * 1000;
 
 	} else return false;
 
@@ -151,6 +150,16 @@ bool speedtest::SpeedTest::get_profile_info(const std::string &data) {
 		dl_length = dl_length * 1000;
 
 	} else return false;
+
+	if ( config.parse("socket-upload", { "testlength" }, socket_upload_info) &&
+		speedtest::xml::all_attributes_found({ "testlength" }, socket_upload_info) &&
+			is_number(socket_upload_info["testlength"]))
+		ul_length = std::stoi(socket_upload_info["testlength"]);
+	else if ( is_number(upload_info["testlength"]))
+		ul_length = std::stoi(upload_info["testlength"]);
+	else return false;
+
+	ul_length = ul_length * 1000;
 
 	this -> _profile = {
 		{ // Download
