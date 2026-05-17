@@ -39,6 +39,17 @@ bool speedtest::SpeedTest::parse_servers(const std::string xml, speedtest::IPInf
 	const std::string server_tag_start = "<server ";
 	std::vector<std::map<std::string, std::string>> arr;
 
+	if ( data.empty())
+		return false;
+
+	while ( !data.empty() && ( data.front() == ' ' || data.front() == '\t' || data.front() == '\n' ||
+		data.front() == '\r' || data.front() == '\f' || data.front() == '\v' ))
+		data.erase(0, 1);
+
+	while ( !data.empty() && ( data.back() == ' ' || data.back() == '\t' || data.back() == '\n' ||
+		data.back() == '\r' || data.back() == '\f' || data.back() == '\v' ))
+		data.erase(data.size() - 1);
+
 	size_t server_tag_begin = data.find(server_tag_start);
 	while ( server_tag_begin != std::string::npos ) {
 
