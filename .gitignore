@@ -34,3 +34,5 @@
 objs/*.o
 ./speedtest
 ./minitest
+
+*.so*

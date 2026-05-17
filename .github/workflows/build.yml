@@ -1,0 +1,21 @@
+name: "C++ CI build"
+run-name: ${{ github.actor }} executed build ${{ inputs.testname }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      testname:
+        default: "manually"
+        description: "build title"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: install libcurl
+      run: sudo apt -y install libcurl4-openssl-dev
+    - name: submodules
+      run: git submodule update --init --recursive --remote
+    - name: make
+      run: make
