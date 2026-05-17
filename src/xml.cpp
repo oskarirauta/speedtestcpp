@@ -54,6 +54,9 @@ bool speedtest::xml::parse_array(const std::string &tag, const std::vector<std::
 				pairs[attribute] = value;
 		}
 
+		if ( !pairs.empty())          // <-- lisätty
+			arr.push_back(pairs);     // <-- lisätty
+
 		tag_begin = _data.find("<" + tag + " ", tag_begin + 1);
 	}
 
