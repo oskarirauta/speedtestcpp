@@ -85,12 +85,12 @@ speedtest::Profile speedtest::Profile::broadband() {
 		20000,		// min_test_time_ms
 		32		// concurrency
 	}, { // Upload
-		1000000,	// start_size
+		2000000,	// start_size
 		70000000,	// max_size
-		250000,		// inc_size
+		400000,		// inc_size
 		65536,		// buff_size
 		20000,		// min_test_time_ms
-		8		// concurrency
+		12		// concurrency
 	}, "broadband", "Broadband line type");
 };
 
@@ -105,12 +105,12 @@ speedtest::Profile speedtest::Profile::fiber() {
 		20000,		// min_test_time_ms
 		32		// concurrency
 	}, { // Upload
-		1000000,	// start_size
+		4000000,	// start_size
 		70000000,	// max_size
-		250000,		// inc_size
+		500000,		// inc_size
 		65536,		// buff_size
 		20000,		// min_test_time_ms
-		12		// concurrency
+		16		// concurrency
 	}, "fiber", "Fiber / Lan line type");
 };
 
