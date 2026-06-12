@@ -12,7 +12,7 @@ LDFLAGS ?= -L/lib -L/usr/lib
 INCLUDES += -I./examples/include
 
 USE_OLD_SERVER_LIST ?= 0
-SPEEDTEST_LINK_SHARED ?= no
+SPEEDTEST_LINK_SHARED ?= yes
 SPEEDTEST_DIR := .
 SPEEDTEST_SHARED_LIB := libspeedtestcpp.so.3.0.0
 SPEEDTEST_STATIC_LIB := libspeedtestcpp.a
