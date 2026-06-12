@@ -284,15 +284,14 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 
 	bytes_total = 0;
 	const auto test_start = steady_clock::now();
+	const auto deadline   = test_start + milliseconds(config.min_test_time_ms);
 
 	auto elapsed_sec = [&]() -> double {
 		return duration_cast<microseconds>(steady_clock::now() - test_start).count() / 1e6;
 	};
-	auto elapsed_ms = [&]() -> long long {
-		return duration_cast<milliseconds>(steady_clock::now() - test_start).count();
-	};
 
-	// Worker threads: transfer data, check time after each block
+	// Worker threads: transfer until the deadline. Byte counting happens inside
+	// the client per read/write, and a worker may stop mid-block at the deadline.
 	std::vector<std::thread> workers;
 	for ( int i = 0; i < config.concurrency; i++ ) {
 
@@ -308,19 +307,12 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 
 			long size = config.start_size;
 
-			while ( true ) {
+			while ( steady_clock::now() < deadline ) {
 
-				double op_time = 0;
-
-				if ( !(client.*pfunc)(size, config.buff_size, op_time)) {
+				if ( !(client.*pfunc)(size, config.buff_size, shared_bytes, deadline)) {
 					if ( cb ) { std::lock_guard lk(cb_mtx); cb(false, {}); }
 					break;
 				}
-
-				shared_bytes.fetch_add(size);
-
-				if ( elapsed_ms() >= config.min_test_time_ms )
-					break;
 
 				size = std::min(size + config.incr_size, config.max_size);
 			}
@@ -330,25 +322,34 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 		});
 	}
 
-	// Reporter thread: emit live speed updates every 500 ms
+	// Reporter thread: emit windowed instantaneous speed (bytes since last
+	// sample / interval) for a responsive live display.
 	std::thread reporter([&]() {
+
+		long long last_bytes = 0;
+		auto      last_t     = steady_clock::now();
 
 		while ( active.load() > 0 ) {
 
-			std::this_thread::sleep_for(milliseconds(500));
+			std::this_thread::sleep_for(milliseconds(250));
 
-			double      sec   = elapsed_sec();
-			long long   bytes = shared_bytes.load();
+			auto      now   = steady_clock::now();
+			long long bytes = shared_bytes.load();
+			double    dt    = duration_cast<microseconds>(now - last_t).count() / 1e6;
+			long long db    = bytes - last_bytes;
 
-			if ( cb && sec > 0.5 && bytes > 0 ) {
+			last_bytes = bytes;
+			last_t     = now;
+
+			if ( cb && dt > 0.0 && db > 0 ) {
 				std::lock_guard lk(cb_mtx);
-				cb(true, speedtest::Speed::from_bytes_per_sec(bytes / sec));
+				cb(true, speedtest::Speed::from_bytes_per_sec(db / dt));
 			}
 		}
 	});
 
 	for ( auto& t : workers ) t.join();
-	double    sec   = elapsed_sec();     // measure before reporter wakeup delay (up to 500ms)
+	double    sec   = elapsed_sec();
 	long long bytes = shared_bytes.load();
 	reporter.join();
 

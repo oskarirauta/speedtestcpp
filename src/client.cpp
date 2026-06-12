@@ -1,4 +1,5 @@
 #include <cstring>
+#include <vector>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -76,7 +77,8 @@ bool speedtest::Client::ping(double &ms) {
 	return false;
 }
 
-bool speedtest::Client::download(const long size, const long chunk_size, double &ms) {
+bool speedtest::Client::download(long size, long chunk_size, std::atomic<long long>& counter,
+		std::chrono::steady_clock::time_point deadline) {
 
 	std::stringstream cmd;
 	cmd << "DOWNLOAD " << size;
@@ -84,91 +86,86 @@ bool speedtest::Client::download(const long size, const long chunk_size, double 
 	if ( !this -> write(cmd.str()))
 		return false;
 
-	char *buff = new char[chunk_size];
-	for ( size_t i = 0; i < static_cast<size_t>(chunk_size); i++ )
-		buff[i] = '\0';
-
+	std::vector<char> buff(static_cast<size_t>(chunk_size));
 	long missing = 0;
-	auto start = std::chrono::high_resolution_clock::now();
 
 	while ( missing < size ) {
-		auto current = this -> read(buff, chunk_size);
 
-		if ( current <= 0 ) {
-			delete[] buff;
+		auto current = this -> read(buff.data(), chunk_size);
+
+		if ( current <= 0 )
 			return false;
-		}
 
 		missing += current;
+		counter.fetch_add(current, std::memory_order_relaxed);
+
+		// Stop mid-block once the test window has elapsed; bytes already read
+		// are counted, and the caller closes the connection.
+		if ( std::chrono::steady_clock::now() >= deadline )
+			return true;
 	}
 
-	auto stop = std::chrono::high_resolution_clock::now();
-	ms = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000.0;
-
-	delete[] buff;
 	return true;
 }
 
-bool speedtest::Client::upload(const long size, const long chunk_size, double &ms) {
+bool speedtest::Client::upload(long size, long chunk_size, std::atomic<long long>& counter,
+		std::chrono::steady_clock::time_point deadline) {
 
 	std::stringstream cmd;
 	cmd << "UPLOAD " << size << "\n";
 
-	auto cmd_len = cmd.str().length();
-	char *buff = new char[chunk_size];
+	long cmd_len = static_cast<long>(cmd.str().length());
+	std::vector<char> buff(static_cast<size_t>(chunk_size));
 
-	for (size_t i = 0; i < static_cast<size_t>(chunk_size); i++)
+	for ( size_t i = 0; i < static_cast<size_t>(chunk_size); i++ )
 		buff[i] = static_cast<char>(rand() % 256);
 
-	long missing = size;
-	auto start = std::chrono::high_resolution_clock::now();
-
-	if ( !this -> write(cmd.str())) {
-		delete[] buff;
+	if ( !this -> write(cmd.str()))
 		return false;
-	}
 
-	ssize_t w = cmd_len;
-	missing -= w;
+	long missing = size - cmd_len;
+	counter.fetch_add(cmd_len, std::memory_order_relaxed);
+
+	bool aborted = false;
 
 	while ( missing > 0 ) {
 
 		if ( missing - chunk_size > 0 ) {
 
-			w = this -> write(buff, chunk_size);
-			if ( w != chunk_size ) {
-				delete[] buff;
+			ssize_t w = this -> write(buff.data(), chunk_size);
+			if ( w != chunk_size )
 				return false;
-			}
 			missing -= w;
+			counter.fetch_add(w, std::memory_order_relaxed);
 
 		} else {
 
 			buff[missing - 1] = '\n';
-			w = this -> write(buff, missing);
-
-			if ( w != missing ) {
-				delete[] buff;
+			ssize_t w = this -> write(buff.data(), missing);
+			if ( w != missing )
 				return false;
-			}
-
 			missing -= w;
+			counter.fetch_add(w, std::memory_order_relaxed);
+		}
+
+		// Stop mid-block once the test window has elapsed. The block is left
+		// incomplete, so we skip the OK handshake and let the caller close.
+		if ( std::chrono::steady_clock::now() >= deadline ) {
+			aborted = true;
+			break;
 		}
 	}
 
+	if ( aborted )
+		return true;
+
 	std::string reply;
 
-	if ( !this -> read(reply)) {
-		delete[] buff;
+	if ( !this -> read(reply))
 		return false;
-	}
-
-	auto stop = std::chrono::high_resolution_clock::now();
 
 	std::stringstream ss;
 	ss << "OK " << size << " ";
-	ms = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000.0;
-	delete[] buff;
 
 	return reply.substr(0, ss.str().length()) == ss.str();
 }

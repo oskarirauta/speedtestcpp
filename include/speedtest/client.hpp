@@ -2,6 +2,7 @@
 
 #include <ctime>
 #include <chrono>
+#include <atomic>
 #include <string>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -22,8 +23,10 @@ namespace speedtest {
 
 			bool connect();
 			bool ping(double &ms);
-			bool upload(long size, long chunk_size, double &ms);
-			bool download(long size, long chunk_size, double &ms);
+			bool upload(long size, long chunk_size, std::atomic<long long>& counter,
+			        std::chrono::steady_clock::time_point deadline);
+			bool download(long size, long chunk_size, std::atomic<long long>& counter,
+			        std::chrono::steady_clock::time_point deadline);
 			void close();
 
 			float version();
@@ -43,6 +46,7 @@ namespace speedtest {
 
 	};
 
-	typedef bool (Client::*opFn)(const long size, const long chunk_size, double &ms);
+	typedef bool (Client::*opFn)(long size, long chunk_size, std::atomic<long long>& counter,
+	        std::chrono::steady_clock::time_point deadline);
 
 }

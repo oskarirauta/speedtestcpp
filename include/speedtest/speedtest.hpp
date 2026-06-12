@@ -22,7 +22,8 @@ namespace speedtest {
 	using ServerCallback = std::function<void(bool success, const speedtest::Server&, long latency_ms)>;
 
 	class Client;
-	typedef bool (speedtest::Client::*opFn)(const long size, const long chunk_size, double &ms);
+	typedef bool (speedtest::Client::*opFn)(long size, long chunk_size, std::atomic<long long>& counter,
+	        std::chrono::steady_clock::time_point deadline);
 
 	class SpeedTest {
 
