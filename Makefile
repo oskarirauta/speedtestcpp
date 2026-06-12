@@ -14,7 +14,7 @@ INCLUDES += -I./examples/include
 USE_OLD_SERVER_LIST ?= 0
 SPEEDTEST_LINK_SHARED ?= yes
 SPEEDTEST_DIR := .
-SPEEDTEST_SHARED_LIB := libspeedtestcpp.so.2.0.0
+SPEEDTEST_SHARED_LIB := libspeedtestcpp.so.3.0.0
 SPEEDTEST_STATIC_LIB := libspeedtestcpp.a
 
 include Makefile.inc
@@ -42,10 +42,10 @@ $(SPEEDTEST_DIR)/libspeedtestcpp.so: $(SPEEDTEST_DIR)/$(SPEEDTEST_SHARED_LIB)
 ifeq ($(SPEEDTEST_LINK_SHARED),yes)
 
 speedtest: objs/main.o $(SPEEDTEST_DIR)/$(SPEEDTEST_SHARED_LIB)
-	$(CXX) $(LDFLAGS) -L. objs/main.o -o $@ $(SPEEDTEST_LIBS) -lspeedtestcpp
+	$(CXX) -L. $(LDFLAGS) objs/main.o -o $@ $(SPEEDTEST_LIBS) -lspeedtestcpp
 
 minitest: objs/minitest.o $(SPEEDTEST_DIR)/$(SPEEDTEST_SHARED_LIB)
-	$(CXX) $(LDFLAGS) -L. objs/minitest.o -o $@ $(SPEEDTEST_LIBS) -lspeedtestcpp
+	$(CXX) -L. $(LDFLAGS) objs/minitest.o -o $@ $(SPEEDTEST_LIBS) -lspeedtestcpp
 
 else
 

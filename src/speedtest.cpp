@@ -1,5 +1,6 @@
 #include <iomanip>
 #include <atomic>
+#include <climits>
 #include <netdb.h>
 #include <sys/utsname.h>
 
@@ -7,123 +8,107 @@
 #include "speedtest/xml.hpp"
 #include "speedtest/speedtest.hpp"
 
-speedtest::SpeedTest::SpeedTest(bool insecure, float minServerVersion): _latency(0), _uploadSpeed(0), _downloadSpeed(0),
-					_bytesReceived(0), _bytesSent(0), _profile(speedtest::Profile::uninitialized()) {
+speedtest::SpeedTest::SpeedTest(bool insecure, float minServerVersion)
+    : _latency(0), _uploadSpeed({}), _downloadSpeed({}),
+      _bytesReceived(0), _bytesSent(0),
+      _profile(speedtest::Profile::uninitialized()) {
 
 	curl_global_init(CURL_GLOBAL_DEFAULT);
-	this -> _strict_ssl_verify = !insecure;
-	this -> _preferred_server_id = -1;
-	this -> _ipinfo = speedtest::IPInfo();
-	this -> _server = speedtest::Server();
-	this -> _servers = std::vector<speedtest::Server>();
-	this -> _ignored_servers = std::vector<int>();
-	this -> _minSupportedServer = minServerVersion;
+	_strict_ssl_verify  = !insecure;
+	_preferred_server_id = -1;
+	_minSupportedServer = minServerVersion;
 
 	std::string data;
-	bool failed = false;
-
-	if ( this -> get_config(data)) {
-
-		if ( !failed ) failed = !this -> get_ip_info(data);
-		if ( !failed ) failed = !this -> get_server_info(data);
-		if ( !failed ) failed = !this -> get_profile_info(data);
+	if ( get_config(data)) {
+		if ( !get_ip_info(data) )  return;
+		if ( !get_server_info(data) ) return;
+		get_profile_info(data);
 	}
-
 }
 
 speedtest::SpeedTest::~SpeedTest() {
-
 	curl_global_cleanup();
-	this -> _servers.clear();
 }
 
 bool speedtest::SpeedTest::ipinfo(speedtest::IPInfo& info) {
 
-	if ( !this -> _ipinfo.ip_address.empty()) {
-
-		info = this -> _ipinfo;
+	if ( !_ipinfo.ip_address.empty()) {
+		info = _ipinfo;
 		return true;
 	}
 
 	std::string data;
-
-	if ( !this -> get_config(data) || !this -> get_ip_info(data))
+	if ( !get_config(data) || !get_ip_info(data))
 		return false;
 
-	info = this -> _ipinfo;
+	info = _ipinfo;
 	return true;
 }
 
 bool speedtest::SpeedTest::profile(speedtest::Profile& profile) {
 
-	if ( this -> _profile.download.concurrency < 1 ) {
-
+	if ( _profile.download.concurrency < 1 ) {
 		std::string data;
-
-		if ( !this -> get_config(data) || !this -> get_profile_info(data))
+		if ( !get_config(data) || !get_profile_info(data))
 			return false;
 	}
 
-	profile = this -> _profile;
+	profile = _profile;
 	return true;
 }
 
 const std::vector<speedtest::Server>& speedtest::SpeedTest::servers() {
 
-	if ( !this -> _servers.empty())
-		return this -> _servers;
+	if ( !_servers.empty())
+		return _servers;
 
 	int http_code = 0;
-	if ( this -> get_servers(speedtest::SERVER_LIST_URL, this -> _servers, http_code) && http_code == 200 )
-		return this -> _servers;
-	else this -> _servers.clear();
+	if ( !get_servers(speedtest::SERVER_LIST_URL, _servers, http_code) || http_code != 200 )
+		_servers.clear();
 
-	return this -> _servers;
+	return _servers;
 }
 
 void speedtest::SpeedTest::reset_servers() {
-
-	this -> _servers.clear();
+	_servers.clear();
 }
 
-bool speedtest::SpeedTest::select_recommended_server(speedtest::Server &server) {
+bool speedtest::SpeedTest::select_recommended_server(speedtest::Server& server) {
 
-	if ( this -> _servers.empty()) {
-
+	if ( _servers.empty()) {
 		int http_code = 0;
-
-		if ( !this -> get_servers(speedtest::SERVER_LIST_URL, this -> _servers, http_code) || http_code != 200 )
+		if ( !get_servers(speedtest::SERVER_LIST_URL, _servers, http_code) || http_code != 200 )
 			return false;
 	}
 
-	if ( this -> _servers.empty())
+	if ( _servers.empty())
 		return false;
 
-	for ( auto &e : this -> servers())
+	for ( auto& e : servers()) {
 
-		if ( e.recommended ) {
+		if ( !e.recommended )
+			continue;
 
-			speedtest::Client client(e);
+		speedtest::Client client(e);
 
-			if ( client.connect() && client.version() >= this -> _minSupportedServer &&
-				this -> test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, this -> _latency )) {
-
-					server = e;
-					client.close();
-					return true;
-			}
-
+		if ( client.connect() && client.version() >= _minSupportedServer &&
+		     test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency)) {
+			server = e;
 			client.close();
+			return true;
+		}
+
+		client.close();
 	}
 
 	return false;
 }
 
-const speedtest::Server speedtest::SpeedTest::best_server(const int sample_size, std::function<void(bool, const speedtest::Server&, long)> cb) {
+const speedtest::Server speedtest::SpeedTest::best_server(int sample_size, speedtest::ServerCallback cb) {
 
-	auto best = this -> find_best_server_in(this -> servers(), this -> _latency, sample_size, cb);
+	auto best = find_best_server_in(servers(), _latency, sample_size, cb);
 	speedtest::Client client(best);
-	this -> test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, this -> _latency);
+	test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency);
 	client.close();
 	return best;
 }
@@ -132,70 +117,68 @@ bool speedtest::SpeedTest::set_server(speedtest::Server& server) {
 
 	speedtest::Client client(server);
 
-	if ( client.connect() && client.version() >= this -> _minSupportedServer &&
-		this -> test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, this -> _latency )) {
-
-			client.close();
-			return true;
+	if ( client.connect() && client.version() >= _minSupportedServer &&
+	     test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency)) {
+		client.close();
+		return true;
 	}
 
 	client.close();
 	return false;
 }
 
-bool speedtest::SpeedTest::set_server(speedtest::Server& server, std::vector<speedtest::Server> &servers) {
+bool speedtest::SpeedTest::set_server(speedtest::Server& server, std::vector<speedtest::Server>& servers) {
 
-	if ( !this -> set_server(server))
+	if ( !set_server(server))
 		return false;
 
-	for ( auto &s : servers )
+	for ( auto& s : servers )
 		if ( s.host == server.host )
-			server = speedtest::Server(s.url, s.name, s.country, s.country_code,
-				s.host, s.sponsor, s.id, s.lat, s.lon, s.distance, s.recommended);
+			server = s;
 
 	return true;
 }
 
-bool speedtest::SpeedTest::download_speed(const speedtest::Server &server, const speedtest::Config& config, double& result, std::function<void(bool, double)> cb) {
+bool speedtest::SpeedTest::download_speed(const speedtest::Server& server, const speedtest::Config& config,
+        speedtest::Speed& result, speedtest::SpeedCallback cb) {
 
 	opFn pfunc = &speedtest::Client::download;
-	this -> _downloadSpeed = this -> execute(server, config, this -> _bytesReceived, pfunc, cb);
-	result = this -> _downloadSpeed;
+	_downloadSpeed = execute(server, config, _bytesReceived, pfunc, cb);
+	result = _downloadSpeed;
 	return true;
 }
 
-bool speedtest::SpeedTest::upload_speed(const speedtest::Server &server, const speedtest::Config& config, double& result, std::function<void(bool, double)> cb) {
+bool speedtest::SpeedTest::upload_speed(const speedtest::Server& server, const speedtest::Config& config,
+        speedtest::Speed& result, speedtest::SpeedCallback cb) {
 
 	opFn pfunc = &speedtest::Client::upload;
-	this -> _uploadSpeed = this -> execute(server, config, this -> _bytesSent, pfunc, cb);
-	result = this -> _uploadSpeed;
+	_uploadSpeed = execute(server, config, _bytesSent, pfunc, cb);
+	result = _uploadSpeed;
 	return true;
 }
 
-const long &speedtest::SpeedTest::latency() {
-
-	return this -> _latency;
+const long& speedtest::SpeedTest::latency() {
+	return _latency;
 }
 
-const unsigned long &speedtest::SpeedTest::received() {
-
-	return this -> _bytesReceived;
+const unsigned long& speedtest::SpeedTest::received() {
+	return _bytesReceived;
 }
 
-const unsigned long &speedtest::SpeedTest::sent() {
-
-	return this -> _bytesSent;
+const unsigned long& speedtest::SpeedTest::sent() {
+	return _bytesSent;
 }
 
-bool speedtest::SpeedTest::jitter(const speedtest::Server &server, long& result, const int sample) {
+bool speedtest::SpeedTest::jitter(const speedtest::Server& server, long& result, const int sample) {
 
-	auto client = speedtest::Client(server);
-	double current_jitter = 0;
-	double previous_ms = -1;
-	int measurements = 0;
+	speedtest::Client client(server);
 
 	if ( !client.connect())
 		return false;
+
+	double current_jitter = 0;
+	double previous_ms   = -1;
+	int    measurements  = 0;
 
 	for ( int i = 0; i < sample; i++ ) {
 
@@ -206,12 +189,12 @@ bool speedtest::SpeedTest::jitter(const speedtest::Server &server, long& result,
 				current_jitter += std::abs(previous_ms - ms);
 				measurements++;
 			}
-			previous_ms = ms;   // <-- puuttui
+			previous_ms = ms;
 		}
 	}
 
 	client.close();
-	result = measurements > 0 ? (long) std::floor(current_jitter / measurements) : 0;
+	result = measurements > 0 ? static_cast<long>(std::floor(current_jitter / measurements)) : 0;
 	return true;
 }
 
@@ -222,45 +205,31 @@ bool speedtest::SpeedTest::share(const speedtest::Server& server, std::string& i
 
 	image_url.clear();
 
-/*
-	post_data << "download=" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) << "&" <<
-		"ping=" << std::setprecision(0) << std::fixed << this -> _latency << "&" <<
-		"upload=" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) << "&" <<
-		"pingselect=1&" <<
-		"recommendedserverid=" << server.id << "&" <<
-		"accuracy=1&" <<
-		"serverid=" << server.id << "&" <<
-		"hash=" << hash;
-*/
-
 	post_data <<
-		"recommendedserverid=" << this -> recommended_server_id(server)/* server.id*/ << "&" <<
-		"ping=" << std::setprecision(0) << std::fixed << this -> _latency << "&" <<
+		"recommendedserverid=" << recommended_server_id(server) << "&" <<
+		"ping="      << std::setprecision(0) << std::fixed << _latency << "&" <<
 		"screendpi=&" <<
 		"promo=&" <<
-		"download=" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) << "&" <<
-		"upload=" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) << "&" <<
+		"download="  << std::setprecision(2) << std::fixed << _downloadSpeed.kbps() << "&" <<
+		"upload="    << std::setprecision(2) << std::fixed << _uploadSpeed.kbps()   << "&" <<
 		"testmethod=http&" <<
-		"hash=" << speedtest::md5(this -> hash_data()) << "&" <<
+		"hash="      << speedtest::md5(hash_data()) << "&" <<
 		"touchscreen=none&" <<
 		"startmode=pingselect&" <<
 		"accuracy=1&" <<
-		"bytesreceived=" << this -> _bytesReceived << "&" <<
-		"bytessent=" << this -> _bytesSent << "&" <<
-		"serverid=" << server.id;
+		"bytesreceived=" << _bytesReceived << "&" <<
+		"bytessent="     << _bytesSent     << "&" <<
+		"serverid="      << server.id;
 
-	std::cout << "post-data:\n" << post_data.str() << std::endl;
-
-	CURL *c = curl_easy_init();
+	CURL* c = curl_easy_init();
 	curl_easy_setopt(c, CURLOPT_REFERER, speedtest::API_REFERER_URL.c_str());
 
-	if ( speedtest::SpeedTest::http_post(speedtest::API_URL, post_data.str(), result, c) == CURLE_OK ) {
+	if ( http_post(speedtest::API_URL, post_data.str(), result, c) == CURLE_OK ) {
 
 		curl_easy_getinfo(c, CURLINFO_HTTP_CODE, &http_code);
 
 		if ( http_code == 200 && !result.str().empty()) {
-
-			auto data = speedtest::SpeedTest::parse_query_string(result.str());
+			auto data = parse_query_string(result.str());
 			if ( data.count("resultid") == 1 )
 				image_url = "http://www.speedtest.net/result/" + data["resultid"] + ".png";
 		}
@@ -280,77 +249,80 @@ const std::string speedtest::SpeedTest::user_agent() {
 		return "Mozilla/5.0 Linux-1; U; x86_64; en-us (KHTML, like Gecko) SpeedTestCpp/" + speedtest::version;
 
 	std::stringstream ss;
-
-	ss << "Mozilla/5.0 " << buf.sysname << "-" << buf.release << "; U; " << buf.machine << "; en-us (KHTML, like Gecko) SpeedTestCpp/" + speedtest::version;
+	ss << "Mozilla/5.0 " << buf.sysname << "-" << buf.release
+	   << "; U; " << buf.machine
+	   << "; en-us (KHTML, like Gecko) SpeedTestCpp/" << speedtest::version;
 	return ss.str();
 }
 
-const std::string speedtest::SpeedTest::hash_data() {
+std::string speedtest::SpeedTest::hash_data() const {
 
-	std::stringstream hash_data;
-
-	hash_data << std::setprecision(0) << std::fixed << this -> _latency <<
-		"-" << std::setprecision(2) << std::fixed << ( this -> _uploadSpeed * 1000 ) <<
-		"-" << std::setprecision(2) << std::fixed << ( this -> _downloadSpeed * 1000 ) <<
-		"-" << speedtest::API_KEY;
-
-	return hash_data.str();
+	std::stringstream s;
+	s << std::setprecision(0) << std::fixed << _latency
+	  << "-" << std::setprecision(2) << std::fixed << _uploadSpeed.kbps()
+	  << "-" << std::setprecision(2) << std::fixed << _downloadSpeed.kbps()
+	  << "-" << speedtest::API_KEY;
+	return s.str();
 }
 
-const int speedtest::SpeedTest::recommended_server_id(const speedtest::Server &fallback) {
+int speedtest::SpeedTest::recommended_server_id(const speedtest::Server& fallback) {
 
 	speedtest::Server server;
-
-	if ( this -> select_recommended_server(server))
+	if ( select_recommended_server(server))
 		return server.id;
-
 	return fallback.id;
 }
 
-double speedtest::SpeedTest::execute(const speedtest::Server &server, const speedtest::Config &config,
-        unsigned long &bytes_total, const opFn &pfunc, std::function<void(bool, double)> cb) {
+speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, const speedtest::Config& config,
+        unsigned long& bytes_total, const opFn& pfunc, speedtest::SpeedCallback cb) {
 
-	std::vector<std::thread> workers;
+	using namespace std::chrono;
 
-	std::atomic<long long> shared_bytes{0};   // all transferred bytes by all threads combined
+	std::atomic<long long> shared_bytes{0};
 	std::atomic<int>       active{config.concurrency};
-	std::mutex             cb_mtx;            // serializes callbacks
+	std::mutex             cb_mtx;
 
 	bytes_total = 0;
-	const auto test_start = std::chrono::steady_clock::now();
+	const auto test_start = steady_clock::now();
 
-	// --- worker threads: only move data, not calculating speed ---
-	for (int i = 0; i < config.concurrency; i++) {
+	auto elapsed_sec = [&]() -> double {
+		return duration_cast<microseconds>(steady_clock::now() - test_start).count() / 1e6;
+	};
+	auto elapsed_ms = [&]() -> long long {
+		return duration_cast<milliseconds>(steady_clock::now() - test_start).count();
+	};
+
+	// Worker threads: transfer data, check time after each block
+	std::vector<std::thread> workers;
+	for ( int i = 0; i < config.concurrency; i++ ) {
 
 		workers.emplace_back([&]() {
 
 			speedtest::Client client(server);
 
-			if (!client.connect()) {
+			if ( !client.connect()) {
 				active--;
-				if (cb) { std::lock_guard<std::mutex> lk(cb_mtx); cb(false, -1); }
+				if ( cb ) { std::lock_guard lk(cb_mtx); cb(false, {}); }
 				return;
 			}
 
-			long curr_size = config.start_size;
+			long size = config.start_size;
 
-			while (curr_size < config.max_size) {
-
-				const auto now = std::chrono::steady_clock::now();
-				if (std::chrono::duration_cast<std::chrono::milliseconds>(now - test_start).count()
-				        >= config.min_test_time_ms)
-					break;
+			while ( true ) {
 
 				double op_time = 0;
 
-				if ((client.*pfunc)(curr_size, config.buff_size, op_time))
-					shared_bytes.fetch_add(curr_size);
-				else {
-					if (cb) { std::lock_guard<std::mutex> lk(cb_mtx); cb(false, -1); }
+				if ( !(client.*pfunc)(size, config.buff_size, op_time)) {
+					if ( cb ) { std::lock_guard lk(cb_mtx); cb(false, {}); }
 					break;
 				}
 
-				curr_size += config.incr_size;
+				shared_bytes.fetch_add(size);
+
+				if ( elapsed_ms() >= config.min_test_time_ms )
+					break;
+
+				size = std::min(size + config.incr_size, config.max_size);
 			}
 
 			client.close();
@@ -358,56 +330,47 @@ double speedtest::SpeedTest::execute(const speedtest::Server &server, const spee
 		});
 	}
 
-	// --- reporter thread, ONE combined value for whole test ---
+	// Reporter thread: emit live speed updates every 500 ms
 	std::thread reporter([&]() {
 
-		using namespace std::chrono;
+		while ( active.load() > 0 ) {
 
-		while (active.load() > 0) {
+			std::this_thread::sleep_for(milliseconds(500));
 
-			std::this_thread::sleep_for(milliseconds(200));
+			double      sec   = elapsed_sec();
+			long long   bytes = shared_bytes.load();
 
-			const auto      now        = steady_clock::now();
-			const double    elapsed_ms = duration_cast<microseconds>(now - test_start).count() / 1000.0;
-			const long long bytes      = shared_bytes.load();
-
-			if (cb && elapsed_ms > 200.0 && bytes > 0) {
-				double kbps = (bytes * 8.0) / (elapsed_ms / 1000.0) / 1000.0; // Kbit/s
-				std::lock_guard<std::mutex> lk(cb_mtx);
-				cb(true, kbps);
+			if ( cb && sec > 0.5 && bytes > 0 ) {
+				std::lock_guard lk(cb_mtx);
+				cb(true, speedtest::Speed::from_bytes_per_sec(bytes / sec));
 			}
 		}
 	});
 
-	for (auto &t : workers)
-		t.join();
+	for ( auto& t : workers ) t.join();
 	reporter.join();
-	workers.clear();
 
-	// --- result: all bytes / time spent by whole test
-	const auto      test_stop = std::chrono::steady_clock::now();
-	const double    total_ms  = std::chrono::duration_cast<std::chrono::microseconds>(test_stop - test_start).count() / 1000.0;
-	const long long bytes     = shared_bytes.load();
+	double    sec   = elapsed_sec();
+	long long bytes = shared_bytes.load();
 
 	bytes_total = static_cast<unsigned long>(bytes);
 
-	if (total_ms <= 0.0)
-		return 0.0;
+	if ( sec <= 0.0 || bytes == 0 )
+		return {};
 
-	return (bytes * 8.0) / (total_ms / 1000.0) / 1000.0; // Kbit/s
+	return speedtest::Speed::from_bytes_per_sec(bytes / sec);
 }
 
-CURLcode speedtest::SpeedTest::http_get(const std::string &url, std::stringstream &ss, CURL *handler, long timeout) {
+CURLcode speedtest::SpeedTest::http_get(const std::string& url, std::stringstream& ss, CURL* handler, long timeout) {
 
 	CURLcode code(CURLE_FAILED_INIT);
-	CURL* curl = speedtest::SpeedTest::curl_setup(handler);
+	CURL* curl = curl_setup(handler);
 
 	if ( curl ) {
-
-		if ( CURLE_OK == ( code = curl_easy_setopt(curl, CURLOPT_FILE, &ss)) &&
-			CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout)) &&
-			CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, this -> _strict_ssl_verify)) &&
-			CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str())))
+		if ( CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_FILE, &ss))          &&
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout))   &&
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, _strict_ssl_verify)) &&
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str())))
 			code = curl_easy_perform(curl);
 
 		if ( handler == nullptr )
@@ -417,18 +380,18 @@ CURLcode speedtest::SpeedTest::http_get(const std::string &url, std::stringstrea
 	return code;
 }
 
-CURLcode speedtest::SpeedTest::http_post(const std::string &url, const std::string &postdata, std::stringstream &os, void *handler, long timeout) {
+CURLcode speedtest::SpeedTest::http_post(const std::string& url, const std::string& postdata,
+        std::stringstream& os, CURL* handler, long timeout) {
 
 	CURLcode code(CURLE_FAILED_INIT);
-	CURL* curl = speedtest::SpeedTest::curl_setup(handler);
+	CURL* curl = curl_setup(handler);
 
 	if ( curl ) {
-
-		if ( CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_FILE, &os)) &&
-			CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout)) &&
-			CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str())) &&
-			CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, this -> _strict_ssl_verify)) &&
-			CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.c_str())))
+		if ( CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_FILE, &os))          &&
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout))   &&
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str()))   &&
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, _strict_ssl_verify)) &&
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.c_str())))
 			code = curl_easy_perform(curl);
 
 		if ( handler == nullptr )
@@ -438,45 +401,39 @@ CURLcode speedtest::SpeedTest::http_post(const std::string &url, const std::stri
 	return code;
 }
 
-CURL *speedtest::SpeedTest::curl_setup(CURL *handler) {
+CURL* speedtest::SpeedTest::curl_setup(CURL* handler) {
 
 	CURL* curl = handler == nullptr ? curl_easy_init() : handler;
 
 	if ( curl ) {
-
 		if ( curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &speedtest::SpeedTest::write_func) == CURLE_OK &&
-			curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L) == CURLE_OK &&
-			curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L) == CURLE_OK &&
-			curl_easy_setopt(curl, CURLOPT_USERAGENT, speedtest::SpeedTest::user_agent().c_str()) == CURLE_OK ) return curl;
-		else {
-			curl_easy_cleanup(handler);
-			return nullptr;
-		}
+		     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L)          == CURLE_OK &&
+		     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L)       == CURLE_OK &&
+		     curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent().c_str()) == CURLE_OK )
+			return curl;
+
+		curl_easy_cleanup(handler);
+		return nullptr;
 	}
 
 	return nullptr;
 }
 
-size_t speedtest::SpeedTest::write_func(void *buf, size_t size, size_t nmemb, void *userp) {
+size_t speedtest::SpeedTest::write_func(void* buf, size_t size, size_t nmemb, void* userp) {
 
-	if ( !userp )
-		return 0;
+	if ( !userp ) return 0;
 
-	std::stringstream &os = *static_cast<std::stringstream *>(userp);
-	std::streamsize len = size * nmemb;
-
-	if ( os.write(static_cast<char*>(buf), len))
-		return static_cast<size_t>(len);
-	else return 0;
+	auto& os = *static_cast<std::stringstream*>(userp);
+	std::streamsize len = static_cast<std::streamsize>(size * nmemb);
+	return os.write(static_cast<char*>(buf), len) ? static_cast<size_t>(len) : 0;
 }
 
-std::map<std::string, std::string> speedtest::SpeedTest::parse_query_string(const std::string &query) {
+std::map<std::string, std::string> speedtest::SpeedTest::parse_query_string(const std::string& query) {
 
-	auto map = std::map<std::string, std::string>();
-	auto pairs = speedtest::SpeedTest::split_string(query, '&');
+	std::map<std::string, std::string> map;
 
-	for ( auto &p : pairs ) {
-		auto kv = speedtest::SpeedTest::split_string(p, '=');
+	for ( auto& p : split_string(query, '&')) {
+		auto kv = split_string(p, '=');
 		if ( kv.size() == 2 )
 			map[kv[0]] = kv[1];
 	}
@@ -484,16 +441,15 @@ std::map<std::string, std::string> speedtest::SpeedTest::parse_query_string(cons
 	return map;
 }
 
-std::vector<std::string> speedtest::SpeedTest::split_string(const std::string &instr, const char separator) {
+std::vector<std::string> speedtest::SpeedTest::split_string(const std::string& instr, const char separator) {
 
 	if ( instr.empty())
-		return std::vector<std::string>();
+		return {};
 
 	std::vector<std::string> tokens;
 	std::size_t start = 0, end = 0;
 
 	while (( end = instr.find(separator, start)) != std::string::npos ) {
-
 		if ( std::string temp = instr.substr(start, end - start); !temp.empty())
 			tokens.push_back(temp);
 		start = end + 1;
@@ -505,130 +461,127 @@ std::vector<std::string> speedtest::SpeedTest::split_string(const std::string &i
 	return tokens;
 }
 
-bool speedtest::SpeedTest::get_servers(const std::string& url, std::vector<speedtest::Server>& target, int &http_code) {
+bool speedtest::SpeedTest::get_servers(const std::string& url, std::vector<speedtest::Server>& target, int& http_code) {
 
 	std::stringstream oss;
 	target.clear();
 
-	auto isHttpScheme = url.find_first_of("http") == 0;
+	bool is_http = url.find("http") == 0;
 
 	CURL* curl = curl_easy_init();
-	if ( speedtest::SpeedTest::http_get(url, oss, curl, 20) != CURLE_OK )
+	if ( http_get(url, oss, curl, 20) != CURLE_OK ) {
+		curl_easy_cleanup(curl);
 		return false;
+	}
 
-	if ( isHttpScheme ) {
-
-		int req_status;
+	if ( is_http ) {
+		int req_status = 0;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &req_status);
 		http_code = req_status;
 
 		if ( http_code != 200 ) {
-
 			curl_easy_cleanup(curl);
 			return false;
 		}
 	} else http_code = 200;
 
-	speedtest::IPInfo ipInfo;
-
-	if ( !this -> ipinfo(ipInfo)) {
-
+	speedtest::IPInfo ip_info;
+	if ( !ipinfo(ip_info)) {
 		curl_easy_cleanup(curl);
-		std::cerr << "OOPS!" << std::endl;
 		return false;
 	}
 
 	std::vector<std::map<std::string, std::string>> values;
-
-	if ( !this -> parse_servers(oss.str(), ipInfo, values))
+	if ( !parse_servers(oss.str(), ip_info, values)) {
+		curl_easy_cleanup(curl);
 		return false;
+	}
 
-	for ( auto &server : values ) {
+	for ( auto& s : values ) {
 
-		speedtest::Server info = {
-			server["url"], server["name"], server["country"], server["cc"],
-			server["host"], server["sponsor"], std::stoi(server["id"]),
-			std::stof(server["lat"]), std::stof(server["lon"]),
-			std::stof(server["distance"]),
-			server.contains("force_ping_select") ? (
-				server["force_ping_select"] == "1" ? true : false ) : false
-		};
+		if ( s["url"].empty()) continue;
 
-		if ( !info.url.empty())
-			target.push_back(info);
+		speedtest::Server info;
+		info.url          = s["url"];
+		info.name         = s["name"];
+		info.country      = s["country"];
+		info.country_code = s["cc"];
+		info.host         = s["host"];
+		info.sponsor      = s["sponsor"];
+		info.id           = std::stoi(s["id"]);
+		info.lat          = std::stof(s["lat"]);
+		info.lon          = std::stof(s["lon"]);
+		info.distance     = std::stof(s["distance"]);
+		info.recommended  = s.contains("force_ping_select") && s.at("force_ping_select") == "1";
+
+		target.push_back(info);
 	}
 
 	curl_easy_cleanup(curl);
-	std::sort(target.begin(), target.end(), [](const speedtest::Server &a, const speedtest::Server &b) -> bool {
+
+	std::sort(target.begin(), target.end(), [](const speedtest::Server& a, const speedtest::Server& b) {
 		return a.distance < b.distance;
 	});
 
 	return true;
 }
 
-const speedtest::Server speedtest::SpeedTest::find_best_server_in(const std::vector<speedtest::Server> &servers, long &latency,
-                                                 const int sample_size, std::function<void(bool, const speedtest::Server&, long)> cb) {
+speedtest::Server speedtest::SpeedTest::find_best_server_in(const std::vector<speedtest::Server>& servers,
+        long& latency, int sample_size, speedtest::ServerCallback cb) {
 
-	int i = sample_size;
 	speedtest::Server best = servers[0];
+	latency = LONG_MAX;
+	int remaining = sample_size;
 
-	latency = INT_MAX;
-
-	for ( auto &server : servers ) {
+	for ( auto& server : servers ) {
 
 		speedtest::Client client(server);
 
 		if ( !client.connect()) {
-
-			if ( cb ) cb(false, server, (long)-1);
+			if ( cb ) cb(false, server, -1);
 			continue;
 		}
 
 		if ( client.version() < _minSupportedServer ) {
-
 			client.close();
 			continue;
 		}
 
 		long current_latency = LONG_MAX;
 
-		if ( this -> test_latency(client, 20, current_latency) && current_latency < latency ) {
-
+		if ( test_latency(client, 20, current_latency) && current_latency < latency ) {
 			latency = current_latency;
-			best = server;
+			best    = server;
 		}
 
 		client.close();
 
 		if ( cb ) cb(true, server, current_latency);
-		if ( i-- < 0 )
-			break;
+		if ( --remaining < 0 ) break;
 	}
 
 	return best;
 }
 
-bool speedtest::SpeedTest::test_latency(speedtest::Client &client, const int sample_size, long &latency) {
+bool speedtest::SpeedTest::test_latency(speedtest::Client& client, const int sample_size, long& latency) {
 
 	if ( !client.connect())
 		return false;
 
-	latency = INT_MAX;
-	double temp_latency = 0;
+	latency = LONG_MAX;
 
 	for ( int i = 0; i < sample_size; i++ ) {
 
-		if ( client.ping(temp_latency)) {
-			if ( temp_latency < latency )
-				latency = temp_latency;
-		} else return false;
+		double ms = 0;
+
+		if ( !client.ping(ms)) return false;
+		if ( static_cast<long>(ms) < latency )
+			latency = static_cast<long>(ms);
 	}
 
 	return true;
 }
 
 void speedtest::SpeedTest::set_insecure(bool insecure) {
-    // when insecure is on, we dont want ssl cert to be verified.
-    // when insecure is off, we want ssl cert to be verified.
-    this -> _strict_ssl_verify = !insecure;
+	_strict_ssl_verify = !insecure;
 }

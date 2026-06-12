@@ -4,7 +4,7 @@ enum SP_JSON_PARSE {
 	SP_JSON_PARSE_ARRAY, SP_JSON_PARSE_OBJECT, SP_JSON_PARSE_KEY, SP_JSON_PARSE_VALUE, SP_JSON_PARSE_NUMBER
 };
 
-bool speedtest::SpeedTest::parse_servers(const std::string json, speedtest::IPInfo& info, std::vector<std::map<std::string, std::string>> &servers) {
+bool speedtest::SpeedTest::parse_servers(const std::string& json, speedtest::IPInfo& info, std::vector<std::map<std::string, std::string>>& servers) {
 
 	std::string data(json);
 

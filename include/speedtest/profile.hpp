@@ -1,17 +1,21 @@
 #pragma once
 
 #include <string>
+#include "speedtest/types.hpp"
 
 namespace speedtest {
 
 	struct Config {
 
-		long start_size, max_size, incr_size, buff_size;
-		long min_test_time_ms;
-		int concurrency;
+		long start_size       = 0;
+		long max_size         = 0;
+		long incr_size        = 0;
+		long buff_size        = 0;
+		long min_test_time_ms = 0;
+		int  concurrency      = 1;
 
 		static const speedtest::Config preflight;
-        };
+	};
 
 	struct Profile {
 
@@ -20,15 +24,15 @@ namespace speedtest {
 		std::string name;
 		std::string description;
 
-		Profile(const double preSpeed);
-		Profile(speedtest::Config download, speedtest::Config upload, std::string name, std::string description) :
-			download(download), upload(upload), name(name), description(description) {};
+		explicit Profile(speedtest::Speed preSpeed);
+		Profile(speedtest::Config dl, speedtest::Config ul, std::string name, std::string desc)
+			: download(dl), upload(ul), name(std::move(name)), description(std::move(desc)) {}
 
-		static const speedtest::Profile uninitialized();
-		static const speedtest::Profile slowband();
-		static const speedtest::Profile narrowband();
-		static const speedtest::Profile broadband();
-		static const speedtest::Profile fiber();
+		static speedtest::Profile uninitialized();
+		static speedtest::Profile slowband(speedtest::Speed preSpeed = {});
+		static speedtest::Profile narrowband();
+		static speedtest::Profile broadband();
+		static speedtest::Profile fiber();
 	};
 
 }

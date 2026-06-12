@@ -22,7 +22,7 @@ SPEEDTEST_OBJS := \
 	objs/sp_profile.o \
 	objs/sp_speedtest.o
 
-SPEEDTEST_SHARED_LIB := libspeedtestcpp.so.2.0.0
+SPEEDTEST_SHARED_LIB := libspeedtestcpp.so.3.0.0
 SPEEDTEST_STATIC_LIB := libspeedtestcpp.a
 
 ifneq ($(USE_OLD_SERVER_LIST),0)

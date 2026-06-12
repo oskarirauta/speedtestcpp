@@ -28,19 +28,17 @@ bool speedtest::SpeedTest::get_ip_info(const std::string &data) {
 	if ( config.parse("client", { "ip", "lat", "lon", "isp", "country" }, config_info) &&
 		speedtest::xml::all_attributes_found({"ip", "isp"}, config_info)) {
 
-		this -> _ipinfo = speedtest::IPInfo(
-			config_info["ip"],
-			config_info["isp"],
-			config_info.contains("country") ? config_info["country"] : "",
-			config_info.contains("lat") ? std::stof(config_info["lat"]) : 0,
-			config_info.contains("lon") ? std::stof(config_info["lon"]) : 0
-		);
+		_ipinfo.ip_address = config_info["ip"];
+		_ipinfo.isp        = config_info["isp"];
+		_ipinfo.country    = config_info.contains("country") ? config_info["country"] : "";
+		_ipinfo.lat        = config_info.contains("lat") ? std::stof(config_info["lat"]) : 0;
+		_ipinfo.lon        = config_info.contains("lon") ? std::stof(config_info["lon"]) : 0;
 
 		return true;
 
 	}
 
-	this -> _ipinfo.ip_address = "";
+	_ipinfo.ip_address = "";
 	return false;
 }
 

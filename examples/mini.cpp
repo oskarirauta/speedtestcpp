@@ -1,138 +1,62 @@
 #include <iostream>
 #include <iomanip>
 #include <csignal>
-#include <thread>
 #include <mutex>
 
 #include "speedtest/speedtest.hpp"
 
-int main(const int argc, const char **argv) {
+int main() {
 
-	std::cout << "SpeedTest++ mini version " << speedtest::version << std::endl;
-
-	if ( !speedtest::git_commit.empty())
-		std::cout << "git commit: " + speedtest::git_commit << std::endl;
-
-	std::cout << "Minimal Speedtest.net command line interface example" << std::endl;
-	std::cout << "Author: Oskari Rauta <oskari.rauta@gmail.com>" << std::endl;
-
-	std::cout << "\nPlease wait patiently. Test is in progress.\n" << std::endl;
+	std::cout << "SpeedTest++ mini " << speedtest::version << "\n"
+	          << "Minimal example — no options, just results.\n\n";
 
 	signal(SIGPIPE, SIG_IGN);
 
 	speedtest::SpeedTest sp;
-	speedtest::IPInfo info;
+	speedtest::IPInfo    info;
+	speedtest::Server    server;
 
 	if ( !sp.ipinfo(info)) {
-
-		std::cerr << "error: unable to retrieve your IP info" << std::endl;
-		return -1;
+		std::cerr << "error: unable to retrieve IP info\n";
+		return EXIT_FAILURE;
 	}
-
-	std::cout << " - IP address information retrieved" << std::endl;
-
-	speedtest::Server server;
-	speedtest::Profile profile(0);
+	std::cout << "IP: " << info.ip_address << " (" << info.isp << ")\n";
 
 	if ( !sp.select_recommended_server(server))
 		server = sp.best_server(10);
 
-	long latency = sp.latency();
-	std::cout << " - Latency test finished" << std::endl;
+	std::cout << "Server: " << server.name << " by " << server.sponsor
+	          << " (" << server.distance << " km)\n"
+	          << "Latency: " << sp.latency() << " ms\n";
 
 	long jitter = 0;
+	if ( sp.jitter(server, jitter))
+		std::cout << "Jitter: " << jitter << " ms\n";
 
-	if ( !sp.jitter(server, jitter)) {
-		std::cout << " - Jitter test skipped, unavailable" << std::endl;
-		jitter = -1;
-	} else std::cout << " - Jitter test finished" << std::endl;
+	speedtest::Profile profile(speedtest::Speed{});
+	speedtest::Speed   preSpeed;
 
-	bool recommended_chosen = sp.profile(profile);
-	double dl = 0, ul = 0;
-	double previous_speed = -1;
-	std::mutex output_mutex;
+	if ( !sp.profile(profile)) {
+		sp.download_speed(server, speedtest::Config::preflight, preSpeed);
+		profile = speedtest::Profile(preSpeed);
+	}
 
-	std::cout << "\e[?25l";
+	std::cout << "Profile: " << profile.name << "\n\n";
 
-	if ( !recommended_chosen ) {
+	std::mutex mtx;
+	speedtest::Speed dl, ul;
 
-		if ( !sp.profile(profile) && !sp.download_speed(server, speedtest::Config::preflight, dl, [&previous_speed, &output_mutex](bool success, double current_speed) {
+	std::cout << "Testing download..." << std::flush;
+	sp.download_speed(server, profile.download, dl, [&mtx](bool ok, speedtest::Speed s) {
+		if ( ok ) { std::lock_guard lk(mtx); std::cout << "\rDownload: " << s << "     " << std::flush; }
+	});
+	std::cout << "\rDownload: " << dl << "                    \n";
 
-			if ( success ) {
-				output_mutex.lock();
-				std::cout << ( previous_speed == -1 ? " - Pre-flight check: " : "\r - Pre-flight check: " ) <<
-					std::setprecision(2) << ( current_speed / 1000 / 1000 * speedtest::Config::preflight.concurrency ) <<
-					" Mbit/s" << "          " << std::flush;
-				previous_speed = current_speed;
-				output_mutex.unlock();
-			}
+	std::cout << "Testing upload..." << std::flush;
+	sp.upload_speed(server, profile.upload, ul, [&mtx](bool ok, speedtest::Speed s) {
+		if ( ok ) { std::lock_guard lk(mtx); std::cout << "\rUpload:   " << s << "     " << std::flush; }
+	});
+	std::cout << "\rUpload:   " << ul << "                    \n";
 
-		})) {
-			std::cout << "\e[?25h";
-			std::cout << ( previous_speed == -1 ? " - Pre-flight check: failure" : "\r - Pre-flight check: failure" ) <<
-				"          " << std::endl;
-			std::cerr << "error: pre-flight check failed" << std::endl;
-			return -1;
-		} else std::cout << "\r - Pre-flight check finished" << "          " << std::endl;
-
-		profile = speedtest::Profile(dl);
-
-	} else std::cout << " - Server recommended profile selected" << std::endl;
-
-	dl = 0;
-	previous_speed = -1;
-
-	if ( !sp.download_speed(server, profile.download, dl, [&previous_speed, &profile, &output_mutex](bool success, double current_speed) {
-
-		if ( success ) {
-			output_mutex.lock();
-			std::cout << ( previous_speed == -1 ? " - Download test: " : "\r - Download test: " ) <<
-				std::setprecision(2) <<
-				(double)(current_speed / 1000 / 1000 * profile.download.concurrency ) <<
-				" Mbit/s" << "          " << std::flush;
-			previous_speed = current_speed;
-			output_mutex.unlock();
-		}
-
-	})) {
-		std::cout << "\e[?25h";
-		std::cout << ( previous_speed == -1 ? " - Download test: failure" : "\r - Download test: failure" ) <<
-			"          " << std::endl;
-		std::cerr << "error: download test failed" << std::endl;
-		return -1;
-	} else std::cout << "\r - Download test finished" << "          " << std::endl;
-
-	previous_speed = -1;
-
-	if ( !sp.upload_speed(server, profile.upload, ul, [&previous_speed, &profile, &output_mutex](bool success, double current_speed) {
-
-		if ( success ) {
-			output_mutex.lock();
-			std::cout << ( previous_speed == -1 ? " - Upload test: " : "\r - Upload test: " ) <<
-				std::setprecision(2) <<
-				( current_speed / 1000 / 1000 * profile.upload.concurrency ) <<
-				" Mbit/s" << "          " << std::flush;
-			previous_speed = current_speed;
-			output_mutex.unlock();
-		}
-
-	})) {
-		std::cout << "\e[?25h";
-		std::cout << ( previous_speed == -1 ? " - Upload test: failure" : "\r - Upload test: failure" ) <<
-			"          " << std::endl;
-		std::cerr << "error: upload test failed" << std::endl;
-		return -1;
-	} else std::cout << "\r - Upload test finished" << "          " << std::endl;
-
-	std::cout << "\e[?25h";
-	std::cout << "\nResults:\n" <<
-		"Server: " << server.host << " by " << server.sponsor << " (" << server.distance << " km" <<
-		( server.recommended ? ", recommended by list" : "" ) << ")\n" <<
-		"Ping: " << latency << " ms.\n" <<
-		"Jitter: " << ( jitter == -1 ? "unavailable\n" : ( std::to_string(jitter) + "ms.\n")) <<
-		"Profile: " << profile.name << "\n" <<
-		"Download speed: " << std::fixed << std::setprecision(2) << dl << " Mbit/s\n" <<
-		"Upload speed: " << std::fixed << std::setprecision(2) << ul << " Mbit/s\n" << std::endl;
-
-	return 0;
+	return EXIT_SUCCESS;
 }

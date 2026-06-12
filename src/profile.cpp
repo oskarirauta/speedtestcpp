@@ -9,47 +9,52 @@ const speedtest::Config speedtest::Config::preflight = {
 	2			// Concurrency
 };
 
-const speedtest::Profile speedtest::Profile::uninitialized() {
+speedtest::Profile speedtest::Profile::uninitialized() {
 
 	return speedtest::Profile(
-	{ // Download
-		-1,		// start_size
-		-1,		// max_size
-		-1,		// inc_size
-		-1,		// buff_size
-		-1,		// min_test_time_ms
-		-1		// Concurrency
-	}, { // Upload
-		-1,		// start_size
-		-1,		// max_size
-		-1,		// inc_size
-		-1,		// buff_size
-		-1,		// min_test_time_ms
-		-1		// Concurrency
-	}, "", "");
+	{ /* Download */ -1, -1, -1, -1, -1, -1 },
+	{ /* Upload   */ -1, -1, -1, -1, -1, -1 },
+	"", "");
 };
 
-const speedtest::Profile speedtest::Profile::slowband() {
+speedtest::Profile speedtest::Profile::slowband(speedtest::Speed preSpeed) {
 
-	return speedtest::Profile(
+	speedtest::Profile p(
 	{ // Download
-		8000,		// start_size
-		500000,		// max_size
-		8000,		// inc_size
-		1024,		// buff_size
-		20000,		// min_test_time_ms
-		1		// Concurrency
+		8000,   // start_size
+		500000, // max_size
+		8000,   // incr_size
+		1024,   // buff_size
+		20000,  // min_test_time_ms
+		1       // concurrency
 	}, { // Upload
-		4000,		// start_size
-		250000,		// max_size
-		4000,		// inc_size
-		1024,		// buff_size
-		20000,		// min_test_time_ms
-		1		// Concurrency
-	}, "slowband", "Very-slow-line line type");
+		4000,   // start_size
+		250000, // max_size
+		4000,   // incr_size
+		1024,   // buff_size
+		20000,  // min_test_time_ms
+		1       // concurrency
+	}, "slowband", "Very slow line type");
+
+	if ( preSpeed.bytes_per_sec > 0 ) {
+		// Scale segment sizes so each segment takes ~1 second at measured speed,
+		// giving smooth live updates even on very slow links (~20 kbit/s).
+		long dl_block = std::max(static_cast<long>(preSpeed.bytes_per_sec), 4000L);
+		long ul_block = std::max(dl_block / 2, 2000L);
+
+		p.download.start_size = dl_block;
+		p.download.incr_size  = dl_block / 4;
+		p.download.max_size   = dl_block * 32;
+
+		p.upload.start_size = ul_block;
+		p.upload.incr_size  = ul_block / 4;
+		p.upload.max_size   = ul_block * 32;
+	}
+
+	return p;
 };
 
-const speedtest::Profile speedtest::Profile::narrowband() {
+speedtest::Profile speedtest::Profile::narrowband() {
 
 	return speedtest::Profile(
 	{ // Download
@@ -69,7 +74,7 @@ const speedtest::Profile speedtest::Profile::narrowband() {
 	}, "narrowband", "Buffering-lover line type");
 };
 
-const speedtest::Profile speedtest::Profile::broadband() {
+speedtest::Profile speedtest::Profile::broadband() {
 
 	return speedtest::Profile(
 	{ // Download
@@ -89,7 +94,7 @@ const speedtest::Profile speedtest::Profile::broadband() {
 	}, "broadband", "Broadband line type");
 };
 
-const speedtest::Profile speedtest::Profile::fiber() {
+speedtest::Profile speedtest::Profile::fiber() {
 
 	return speedtest::Profile(
 	{ // Download
@@ -109,60 +114,18 @@ const speedtest::Profile speedtest::Profile::fiber() {
 	}, "fiber", "Fiber / Lan line type");
 };
 
-speedtest::Profile::Profile(const double preSpeed) {
+speedtest::Profile::Profile(speedtest::Speed preSpeed) {
 
-	if ( preSpeed > 4 && preSpeed <= 30 ) {
+	speedtest::Profile p = [&]() -> speedtest::Profile {
+		double mbps = preSpeed.mbps();
+		if      ( mbps >= 150 ) return speedtest::Profile::fiber();
+		else if ( mbps > 30   ) return speedtest::Profile::broadband();
+		else if ( mbps > 4    ) return speedtest::Profile::narrowband();
+		else                    return speedtest::Profile::slowband(preSpeed);
+	}();
 
-		speedtest::Profile narrowband = speedtest::Profile::narrowband();
-		this -> download = narrowband.download;
-		this -> upload = narrowband.upload;
-		this -> name = narrowband.name;
-		this -> description = narrowband.description;
-
-	} else if ( preSpeed > 30 && preSpeed < 150 ) {
-
-		speedtest::Profile broadband = speedtest::Profile::broadband();
-		this -> download = broadband.download;
-		this -> upload = broadband.upload;
-		this -> name = broadband.name;
-		this -> description = broadband.description;
-
-	} else if ( preSpeed >= 150 ) {
-
-		speedtest::Profile fiber = speedtest::Profile::fiber();
-		this -> download = fiber.download;
-		this -> upload = fiber.upload;
-		this -> name = fiber.name;
-		this -> description = fiber.description;
-
-	} else {
-
-		// slowband: very slow link (<= 4 Mbit/s). One static segment size
-		// does not work very well on whole range, so we scale up to measured
-		// pre-speed so that one segment finishes in approx. 1 second -> realtime
-		// reading updates smoothly even on about 20 kbit/s link
-
-		speedtest::Profile slowband = speedtest::Profile::slowband();
-
-		long bytes_per_s = static_cast<long>(preSpeed * 125000.0); // Mbit/s -> bit/s
-
-		long dl_block = bytes_per_s;        // ~1 s load/segmenet
-		long ul_block = bytes_per_s / 2;    // upload is usually slower
-
-		if ( dl_block < 4000 ) dl_block = 4000;   // low limits so that segment
-		if ( ul_block < 2000 ) ul_block = 2000;   // doesn't reduce to too small
-
-		slowband.download.start_size = dl_block;
-		slowband.download.incr_size  = dl_block / 4;    // low ramp
-		slowband.download.max_size   = dl_block * 32;   // safety limit
-
-		slowband.upload.start_size = ul_block;
-		slowband.upload.incr_size  = ul_block / 4;
-		slowband.upload.max_size   = ul_block * 32;
-
-		this -> download = slowband.download;
-		this -> upload = slowband.upload;
-		this -> name = slowband.name;
-		this -> description = slowband.description;
-	}
+	this->download    = p.download;
+	this->upload      = p.upload;
+	this->name        = p.name;
+	this->description = p.description;
 }
