@@ -13,7 +13,6 @@
 namespace {
 
 	constexpr int METER_WIDTH = 24;
-	constexpr int PROG_WIDTH  = 20;
 
 	void restore_cursor(int) {
 		std::cout << tui::ansi::show_cursor << std::flush;
@@ -55,10 +54,12 @@ namespace {
 			line_meter("Download", dl, ph == tui::Phase::Download && !dl_done, dl_done, dl_done || ph == tui::Phase::Download);
 			line_meter("Upload",   ul, ph == tui::Phase::Upload   && !ul_done, ul_done, ul_done || ph == tui::Phase::Upload);
 
+			// Same skeleton as the meter lines so the bar lines up under the
+			// two meters above and the time text under the Mbit/s figures.
 			double frac = total > 0.0 ? std::min(elapsed / total, 1.0) : 0.0;
 			std::cout << tui::ansi::clear_line << "  " << tui::ansi::dim
-			          << ( ph == tui::Phase::Download ? "down " : "up   " )
-			          << tui::bar(frac, PROG_WIDTH) << " "
+			          << std::left << std::setw(9) << ( ph == tui::Phase::Download ? "down" : "up" )
+			          << "▕" << tui::bar(frac, METER_WIDTH) << "▏" << "  "
 			          << std::fixed << std::setprecision(1) << elapsed << " / "
 			          << std::setprecision(1) << total << " s"
 			          << tui::ansi::reset << "\n" << std::flush;
