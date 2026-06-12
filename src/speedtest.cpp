@@ -348,10 +348,9 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 	});
 
 	for ( auto& t : workers ) t.join();
-	reporter.join();
-
-	double    sec   = elapsed_sec();
+	double    sec   = elapsed_sec();     // measure before reporter wakeup delay (up to 500ms)
 	long long bytes = shared_bytes.load();
+	reporter.join();
 
 	bytes_total = static_cast<unsigned long>(bytes);
 

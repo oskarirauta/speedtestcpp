@@ -222,29 +222,24 @@ int main(const int argc, const char **argv) {
 		return EXIT_SUCCESS;
 	}
 
-	speedtest::Profile profile(speedtest::Speed{});
+	if ( opts.output_type == OutputType::verbose )
+		std::cout << "\nDetermine line type (" << speedtest::Config::preflight.concurrency << ") " << std::flush;
 
-	if ( !sp.profile(profile)) {
+	speedtest::Speed preSpeed;
 
+	if ( !sp.download_speed(server, speedtest::Config::preflight, preSpeed,
+	        [&opts](bool success, speedtest::Speed) {
 		if ( opts.output_type == OutputType::verbose )
-			std::cout << "\nDetermine line type (" << speedtest::Config::preflight.concurrency << ") " << std::flush;
-
-		speedtest::Speed preSpeed;
-
-		if ( !sp.download_speed(server, speedtest::Config::preflight, preSpeed,
-		        [&opts](bool success, speedtest::Speed) {
-			if ( opts.output_type == OutputType::verbose )
-				std::cout << ( success ? '.' : '*' ) << std::flush;
-		})) {
-			if ( opts.output_type == OutputType::json )
-				std::cout << "\"error\":\"pre-flight check failed\"}\n";
-			else
-				std::cerr << "Pre-flight check failed.\n";
-			return EXIT_FAILURE;
-		}
-
-		profile = speedtest::Profile(preSpeed);
+			std::cout << ( success ? '.' : '*' ) << std::flush;
+	})) {
+		if ( opts.output_type == OutputType::json )
+			std::cout << "\"error\":\"pre-flight check failed\"}\n";
+		else
+			std::cerr << "Pre-flight check failed.\n";
+		return EXIT_FAILURE;
 	}
+
+	speedtest::Profile profile(preSpeed);
 
 	if ( opts.output_type == OutputType::verbose )
 		std::cout << "\n" << profile.description << " detected: profile selected " << profile.name << "\n";
