@@ -1,6 +1,8 @@
 #include <cstring>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include "speedtest/client.hpp"
 
 speedtest::Client::~Client() {
@@ -177,6 +179,13 @@ bool speedtest::Client::mk_socket() {
 		this -> _fd = 0;
 		return false;
 	}
+
+	// Disable Nagle so the small per-block trailer ('\n') and UPLOAD command
+	// are not held back waiting for a pending ACK. Without this, the
+	// Nagle/delayed-ACK interaction stalls ~40ms at every upload block
+	// boundary, consistently dragging upload throughput below the link rate.
+	int one = 1;
+	setsockopt(this -> _fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 
 	auto hostp = this -> host();
 #if __APPLE__
