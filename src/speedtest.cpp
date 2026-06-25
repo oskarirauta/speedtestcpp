@@ -1,6 +1,7 @@
 #include <iomanip>
 #include <atomic>
 #include <climits>
+#include <deque>
 #include <netdb.h>
 #include <sys/utsname.h>
 
@@ -295,7 +296,7 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 	std::vector<std::thread> workers;
 	for ( int i = 0; i < config.concurrency; i++ ) {
 
-		workers.emplace_back([&]() {
+		workers.emplace_back([&, i]() {
 
 			speedtest::Client client(server);
 
@@ -305,7 +306,17 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 				return;
 			}
 
-			long size = config.start_size;
+			// Stagger the per-worker block size so the concurrent connections
+			// do not all reach their block boundary (and the upload OK-handshake
+			// stall that follows it) at the same instant. The offset spans a full
+			// block (start_size), spreading the block boundaries evenly across one
+			// block period; a smaller span would leave the connections clustered
+			// and the aggregate byte rate would still pulse. The phase offset
+			// persists across rounds since every worker grows by the same incr.
+			long size = config.concurrency > 1
+				? std::min(config.start_size + (config.start_size * i) / config.concurrency,
+				           config.max_size)
+				: config.start_size;
 
 			while ( steady_clock::now() < deadline ) {
 
@@ -322,26 +333,43 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 		});
 	}
 
-	// Reporter thread: emit windowed instantaneous speed (bytes since last
-	// sample / interval) for a responsive live display.
+	// Reporter thread: emit the average speed over a trailing fixed-duration
+	// window (total bytes in the window / its real span). A true windowed
+	// average rejects the per-window burstiness (TCP send-buffer fill/drain
+	// plus the upload OK-handshake gaps) far better than an EMA, which keeps
+	// chasing each recent spike. The window bounds the lag to its width.
+	constexpr auto kWindow = milliseconds(2000);
 	std::thread reporter([&]() {
 
-		long long last_bytes = 0;
-		auto      last_t     = steady_clock::now();
+		// Trailing samples of (timestamp, cumulative bytes) within the window.
+		std::deque<std::pair<steady_clock::time_point, long long>> samples;
+		bool started = false;
 
 		while ( active.load() > 0 ) {
 
-			std::this_thread::sleep_for(milliseconds(250));
+			std::this_thread::sleep_for(milliseconds(150));
 
 			auto      now   = steady_clock::now();
 			long long bytes = shared_bytes.load();
-			double    dt    = duration_cast<microseconds>(now - last_t).count() / 1e6;
-			long long db    = bytes - last_bytes;
 
-			last_bytes = bytes;
-			last_t     = now;
+			// Hold off until the transfer has actually started.
+			if ( !started ) {
+				if ( bytes <= 0 )
+					continue;
+				started = true;
+			}
 
-			if ( cb && dt > 0.0 && db > 0 ) {
+			samples.emplace_back(now, bytes);
+
+			// Drop samples that fell out of the window, keeping the most recent
+			// one that predates it so the average spans the full window width.
+			while ( samples.size() > 1 && samples[1].first <= now - kWindow )
+				samples.pop_front();
+
+			double    dt = duration_cast<microseconds>(now - samples.front().first).count() / 1e6;
+			long long db = bytes - samples.front().second;
+
+			if ( cb && dt > 0.0 && db >= 0 ) {
 				std::lock_guard lk(cb_mtx);
 				cb(true, speedtest::Speed::from_bytes_per_sec(db / dt));
 			}

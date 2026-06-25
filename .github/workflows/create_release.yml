@@ -24,9 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - name: create release
-        uses: oskarirauta/create-release-action@v1
+        uses: oskarirauta/create-release-action@v2
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tagname }}
@@ -37,7 +39,7 @@ jobs:
         run: |
           echo "created release ${{ inputs.releasename }} with tag ${{ inputs.tagname }}" >> $GITHUB_STEP_SUMMARY
       - name: create asset
-        uses: oskarirauta/upload-recursive-asset-action@v1
+        uses: oskarirauta/upload-recursive-asset-action@v2
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tagname }}

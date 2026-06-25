@@ -2,6 +2,8 @@ name: "C++ CI build"
 run-name: ${{ github.actor }} executed build ${{ inputs.testname }}
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
       testname:
@@ -12,10 +14,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: install libcurl
-      run: sudo apt -y install libcurl4-openssl-dev
+    - uses: actions/checkout@v5
     - name: submodules
       run: git submodule update --init --recursive --remote
-    - name: make
+    - name: install libcurl
+      run: sudo apt -y install libcurl4-openssl-dev
+    - name: make (dynamic, the default)
       run: make
+    - name: make (static link mode)
+      # Exercise the other link mode too: SPEEDTEST_LINK_SHARED=no links the
+      # examples against libspeedtestcpp.a instead of the shared object.
+      run: make clean && make SPEEDTEST_LINK_SHARED=no
