@@ -251,8 +251,15 @@ bool speedtest::Client::read(std::string &buffer) {
 	while( true ) {
 
 		auto n = this -> read(&c, 1);
-		if ( n < -1 )
+
+		// n <= 0 means the peer closed the connection (0, EOF) or the read
+		// errored (-1). ::read never returns < -1, so the old `n < -1` guard
+		// never fired: on a throttling server's close the loop spun forever,
+		// re-appending the stale `c` and growing `buffer` without bound until
+		// the process pinned a core and exhausted all system memory.
+		if ( n <= 0 )
 			return false;
+
 		if ( c == '\n' || c == '\r' )
 			break;
 
