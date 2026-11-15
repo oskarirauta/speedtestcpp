@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdlib>
 #include <functional>
 #include <cmath>
 #include <sstream>
@@ -17,6 +18,23 @@
 #include "speedtest/types.hpp"
 
 namespace speedtest {
+
+	// Component-wise "major.minor" comparison. The raw-TCP protocol version is NOT
+	// a decimal number: a server reporting "2.11" is NEWER than "2.3" (minor 11 > 3),
+	// while a naive float compare (2.11f < 2.3f) falsely rejects every modern server
+	// with minor >= 10.
+	static inline bool version_ge(const std::string& a, const std::string& b) {
+		auto split = [](const std::string& v, int& maj, int& min) {
+			size_t dot = v.find('.');
+			maj = std::atoi(v.substr(0, dot).c_str());
+			min = dot == std::string::npos ? 0 : std::atoi(v.substr(dot + 1).c_str());
+		};
+		int amaj, amin, bmaj, bmin;
+		split(a, amaj, amin);
+		split(b, bmaj, bmin);
+		return amaj > bmaj || (amaj == bmaj && amin >= bmin);
+	}
+
 
 	using SpeedCallback  = std::function<void(bool success, speedtest::Speed current)>;
 	using ServerCallback = std::function<void(bool success, const speedtest::Server&, long latency_ms)>;
@@ -37,10 +55,11 @@ namespace speedtest {
 			bool set_server(speedtest::Server& server);
 			bool set_server(speedtest::Server& server, std::vector<speedtest::Server>& servers);
 			void set_insecure(bool insecure = false);
+			void set_source_ip(const std::string& ip);
 
 			bool download_speed(const speedtest::Server& server, const speedtest::Config& config, speedtest::Speed& result, speedtest::SpeedCallback cb = nullptr);
 			bool upload_speed(const speedtest::Server& server, const speedtest::Config& config, speedtest::Speed& result, speedtest::SpeedCallback cb = nullptr);
-			bool jitter(const speedtest::Server& server, long& result, int sample = 40);
+			bool jitter(const speedtest::Server& server, double& result, int sample = 40);
 			bool share(const speedtest::Server& server, std::string& image_url);
 
 			void reset_servers();
@@ -63,6 +82,8 @@ namespace speedtest {
 			unsigned long _bytesReceived;
 			unsigned long _bytesSent;
 			float         _minSupportedServer;
+			std::string   _minSupportedVersion;
+			std::string   _source_ip;
 			bool          _strict_ssl_verify;
 			int           _preferred_server_id;
 			std::vector<int> _ignored_servers;
@@ -73,6 +94,7 @@ namespace speedtest {
 			speedtest::Profile _profile;
 
 			std::string hash_data() const;
+			speedtest::Client make_client(const speedtest::Server& server);
 			int recommended_server_id(const speedtest::Server& fallback);
 			bool get_servers(const std::string& url, std::vector<speedtest::Server>& target, int& http_code);
 			bool test_latency(speedtest::Client& client, int sample_size, long& latency);

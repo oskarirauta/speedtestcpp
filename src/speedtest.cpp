@@ -3,6 +3,7 @@
 #include <climits>
 #include <deque>
 #include <netdb.h>
+#include <sstream>
 #include <sys/utsname.h>
 
 #include "speedtest/md5.hpp"
@@ -18,6 +19,9 @@ speedtest::SpeedTest::SpeedTest(bool insecure, float minServerVersion)
 	_strict_ssl_verify  = !insecure;
 	_preferred_server_id = -1;
 	_minSupportedServer = minServerVersion;
+	std::ostringstream oss;
+	oss << minServerVersion;
+	_minSupportedVersion = oss.str();
 
 	std::string data;
 	if ( get_config(data)) {
@@ -90,9 +94,9 @@ bool speedtest::SpeedTest::select_recommended_server(speedtest::Server& server) 
 		if ( !e.recommended )
 			continue;
 
-		speedtest::Client client(e);
+		speedtest::Client client = make_client(e);
 
-		if ( client.connect() && client.version() >= _minSupportedServer &&
+		if ( client.connect() && version_ge(client.version_string(), _minSupportedVersion) &&
 		     test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency)) {
 			server = e;
 			client.close();
@@ -108,7 +112,7 @@ bool speedtest::SpeedTest::select_recommended_server(speedtest::Server& server) 
 const speedtest::Server speedtest::SpeedTest::best_server(int sample_size, speedtest::ServerCallback cb) {
 
 	auto best = find_best_server_in(servers(), _latency, sample_size, cb);
-	speedtest::Client client(best);
+	speedtest::Client client = make_client(best);
 	test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency);
 	client.close();
 	return best;
@@ -116,9 +120,9 @@ const speedtest::Server speedtest::SpeedTest::best_server(int sample_size, speed
 
 bool speedtest::SpeedTest::set_server(speedtest::Server& server) {
 
-	speedtest::Client client(server);
+	speedtest::Client client = make_client(server);
 
-	if ( client.connect() && client.version() >= _minSupportedServer &&
+	if ( client.connect() && version_ge(client.version_string(), _minSupportedVersion) &&
 	     test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency)) {
 		client.close();
 		return true;
@@ -170,9 +174,9 @@ const unsigned long& speedtest::SpeedTest::sent() {
 	return _bytesSent;
 }
 
-bool speedtest::SpeedTest::jitter(const speedtest::Server& server, long& result, const int sample) {
+bool speedtest::SpeedTest::jitter(const speedtest::Server& server, double& result, const int sample) {
 
-	speedtest::Client client(server);
+	speedtest::Client client = make_client(server);
 
 	if ( !client.connect())
 		return false;
@@ -195,7 +199,7 @@ bool speedtest::SpeedTest::jitter(const speedtest::Server& server, long& result,
 	}
 
 	client.close();
-	result = measurements > 0 ? static_cast<long>(std::floor(current_jitter / measurements)) : 0;
+	result = measurements > 0 ? current_jitter / measurements : 0;
 	return true;
 }
 
@@ -298,7 +302,7 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 
 		workers.emplace_back([&, i]() {
 
-			speedtest::Client client(server);
+			speedtest::Client client = make_client(server);
 
 			if ( !client.connect()) {
 				active--;
@@ -398,7 +402,9 @@ CURLcode speedtest::SpeedTest::http_get(const std::string& url, std::stringstrea
 		if ( CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_FILE, &ss))          &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout))   &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, _strict_ssl_verify)) &&
-		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str())))
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str()))   &&
+		     ( this -> _source_ip.empty() ||
+		       CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_INTERFACE, this -> _source_ip.c_str())) ) )
 			code = curl_easy_perform(curl);
 
 		if ( handler == nullptr )
@@ -419,7 +425,9 @@ CURLcode speedtest::SpeedTest::http_post(const std::string& url, const std::stri
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout))   &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str()))   &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, _strict_ssl_verify)) &&
-		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.c_str())))
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.c_str())) &&
+		     ( this -> _source_ip.empty() ||
+		       CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_INTERFACE, this -> _source_ip.c_str())) ) )
 			code = curl_easy_perform(curl);
 
 		if ( handler == nullptr )
@@ -563,14 +571,14 @@ speedtest::Server speedtest::SpeedTest::find_best_server_in(const std::vector<sp
 
 	for ( auto& server : servers ) {
 
-		speedtest::Client client(server);
+		speedtest::Client client = make_client(server);
 
 		if ( !client.connect()) {
 			if ( cb ) cb(false, server, -1);
 			continue;
 		}
 
-		if ( client.version() < _minSupportedServer ) {
+		if ( !version_ge(client.version_string(), _minSupportedVersion) ) {
 			client.close();
 			continue;
 		}
@@ -612,4 +620,25 @@ bool speedtest::SpeedTest::test_latency(speedtest::Client& client, const int sam
 
 void speedtest::SpeedTest::set_insecure(bool insecure) {
 	_strict_ssl_verify = !insecure;
+}
+
+void speedtest::SpeedTest::set_source_ip(const std::string& ip) {
+
+	if ( _source_ip == ip )
+		return;
+
+	_source_ip = ip;
+
+	// Config-derived data (client IP, server list) may have been fetched
+	// over the default route before the source was pinned. Drop it so the
+	// next access re-fetches it with the chosen egress interface bound.
+	_ipinfo = speedtest::IPInfo();
+	_servers.clear();
+}
+
+speedtest::Client speedtest::SpeedTest::make_client(const speedtest::Server& server) {
+	speedtest::Client client(server);
+	if ( !_source_ip.empty() )
+		client.set_source(_source_ip);
+	return client;
 }

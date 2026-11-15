@@ -75,6 +75,17 @@ sparktest: objs/sparktest.o $(SPEEDTEST_DIR)/$(SPEEDTEST_STATIC_LIB)
 
 endif
 
+tests/objs/test_main.o: tests/test_main.cpp
+	mkdir -p tests/objs
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
+
+test_speedtestcpp: tests/objs/test_main.o $(SPEEDTEST_DIR)/$(SPEEDTEST_STATIC_LIB)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ -o $@ $(SPEEDTEST_LIBS)
+
+.PHONY: test
+test: test_speedtestcpp
+	./test_speedtestcpp
+
 .PHONY: clean
 clean:
-	rm -f objs/*.o speedtest minitest bartest sparktest $(SPEEDTEST_STATIC_LIB) $(SPEEDTEST_SHARED_LIB) libspeedtestcpp.so
+	rm -f objs/*.o speedtest minitest bartest sparktest $(SPEEDTEST_STATIC_LIB) $(SPEEDTEST_SHARED_LIB) libspeedtestcpp.so test_speedtestcpp tests/objs/*.o

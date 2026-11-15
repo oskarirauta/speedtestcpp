@@ -1,4 +1,5 @@
 #include <cstring>
+#include <utility>
 #include <vector>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -8,6 +9,26 @@
 
 speedtest::Client::~Client() {
 	this -> close();
+}
+
+speedtest::Client::Client(Client&& other) noexcept
+		: _fd(other._fd), _version(other._version),
+		  _version_str(std::move(other._version_str)),
+		  _source(std::move(other._source)),
+		  _server(std::move(other._server)) {
+	other._fd = 0;
+}
+
+speedtest::Client& speedtest::Client::operator=(Client&& other) noexcept {
+	if ( this != &other ) {
+		close();
+		_fd = other._fd; other._fd = 0;
+		_version = other._version;
+		_version_str = std::move(other._version_str);
+		_source = std::move(other._source);
+		_server = std::move(other._server);
+	}
+	return *this;
 }
 
 bool speedtest::Client::connect() {
@@ -28,15 +49,18 @@ bool speedtest::Client::connect() {
 	if ( this -> read(reply)) {
 
 		std::stringstream reply_stream(reply);
-		std::string hello;
+		std::string hello, ver;
 
-		reply_stream >> hello >> this -> _version;
+		reply_stream >> hello >> ver;
 
 		if ( reply_stream.fail()) {
 			this -> close();
 			return false;
-		} else if ( !reply.empty() && hello == "HELLO" )
+		} else if ( !reply.empty() && hello == "HELLO" ) {
+			this -> _version_str = ver;
+			this -> _version = std::atof(ver.c_str());
 			return true;
+		}
 	}
 
 	this -> close();
@@ -177,6 +201,20 @@ bool speedtest::Client::mk_socket() {
 		return false;
 	}
 
+	// Force egress from a specific local address (--source). Binding the
+	// source fixes the interface the kernel routes from, which on routers
+	// with policy-based routing also decides the WAN/VPN path.
+	if ( !this -> _source.empty() ) {
+		sockaddr_in source_addr = {};
+		source_addr.sin_family = AF_INET;
+		source_addr.sin_port = 0;
+		if ( inet_pton(AF_INET, this -> _source.c_str(), &source_addr.sin_addr) != 1 ||
+		     bind(this -> _fd, (struct sockaddr*)&source_addr, sizeof(source_addr)) < 0 ) {
+			this -> close();
+			return false;
+		}
+	}
+
 	// Disable Nagle so the small per-block trailer ('\n') and UPLOAD command
 	// are not held back waiting for a pending ACK. Without this, the
 	// Nagle/delayed-ACK interaction stalls ~40ms at every upload block
@@ -229,6 +267,14 @@ bool speedtest::Client::mk_socket() {
 
 float speedtest::Client::version() {
     return this -> _version;
+}
+
+const std::string& speedtest::Client::version_string() {
+	return this -> _version_str;
+}
+
+void speedtest::Client::set_source(const std::string& ip) {
+	this -> _source = ip;
 }
 
 const std::pair<std::string, int> speedtest::Client::host() {

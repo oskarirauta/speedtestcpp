@@ -8,6 +8,7 @@
 #include <getopt.h>
 
 #define OPT_LIST 1000
+#define OPT_SOURCE 1001
 
 enum OutputType { verbose, text, json };
 
@@ -21,6 +22,7 @@ typedef struct program_options_t {
 	bool insecure			= false;
 	bool force_ping_selected	= false;
 	std::string selected_server 	= "";
+	std::string source 		= "";
 	OutputType output_type		= OutputType::verbose;
 } ProgramOptions;
 
@@ -35,6 +37,7 @@ static struct option CmdLongOptions[] = {
 	{ "force-by-latency-test",	no_argument,		0, 'f' },
 	{ "test-server",		required_argument,	0, 't' },
 	{ "output",			required_argument,	0, 'o' },
+	{ "source",			required_argument,	0, OPT_SOURCE },
 	{ 0, 0, 0, 0 }
 };
 
@@ -75,6 +78,9 @@ bool ParseOptions(const int argc, const char **argv, ProgramOptions& options) {
 				break;
 			case 't':
 				options.selected_server.append(optarg);
+				break;
+			case OPT_SOURCE:
+				options.source = optarg;
 				break;
 			case 'o':
 				if (strcmp(optarg, "verbose") == 0)

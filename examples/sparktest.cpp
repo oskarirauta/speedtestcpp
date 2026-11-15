@@ -92,7 +92,7 @@ int main(int argc, const char** argv) {
 	};
 
 	hooks.on_ready = [](const speedtest::Server& server, const speedtest::IPInfo& info,
-	        long latency, long jitter) {
+	        long latency, double jitter) {
 		std::cout << "\r" << tui::ansi::clear_line
 		          << tui::ansi::bold << "SpeedTest++ " << speedtest::version << tui::ansi::reset
 		          << tui::ansi::dim << "  (" << info.isp << ")" << tui::ansi::reset << "\n"

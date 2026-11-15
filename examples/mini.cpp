@@ -29,7 +29,7 @@ int main() {
 	          << " (" << server.distance << " km)\n"
 	          << "Latency: " << sp.latency() << " ms\n";
 
-	long jitter = 0;
+	double jitter = 0;
 	if ( sp.jitter(server, jitter))
 		std::cout << "Jitter: " << jitter << " ms\n";
 
