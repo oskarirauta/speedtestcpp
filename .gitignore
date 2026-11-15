@@ -36,3 +36,7 @@ objs/*.o
 ./minitest
 
 *.so*
+
+# test artifacts
+test_speedtestcpp
+tests/objs/

@@ -1,13 +1,35 @@
+#include <cstdio>
 #include <iomanip>
 #include <atomic>
 #include <climits>
 #include <deque>
 #include <netdb.h>
+#include <random>
+#include <sstream>
 #include <sys/utsname.h>
 
 #include "speedtest/md5.hpp"
 #include "speedtest/xml.hpp"
 #include "speedtest/speedtest.hpp"
+#include "speedtest/packet_loss_sender.hpp"
+
+// Random v4-format UUID; identifies the UDP probe stream to the server so it
+// can correlate the datagrams with this TCP session.
+static std::string generate_uuid() {
+	std::random_device rd;
+	unsigned char bytes[16];
+	for ( auto& b : bytes )
+		b = static_cast<unsigned char>(rd());
+	bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0f) | 0x40);
+	bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3f) | 0x80);
+
+	char out[37];
+	std::snprintf(out, sizeof(out),
+	              "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+	              bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+	              bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+	return std::string(out);
+}
 
 speedtest::SpeedTest::SpeedTest(bool insecure, float minServerVersion)
     : _latency(0), _uploadSpeed({}), _downloadSpeed({}),
@@ -18,6 +40,9 @@ speedtest::SpeedTest::SpeedTest(bool insecure, float minServerVersion)
 	_strict_ssl_verify  = !insecure;
 	_preferred_server_id = -1;
 	_minSupportedServer = minServerVersion;
+	std::ostringstream oss;
+	oss << minServerVersion;
+	_minSupportedVersion = oss.str();
 
 	std::string data;
 	if ( get_config(data)) {
@@ -90,9 +115,9 @@ bool speedtest::SpeedTest::select_recommended_server(speedtest::Server& server) 
 		if ( !e.recommended )
 			continue;
 
-		speedtest::Client client(e);
+		speedtest::Client client = make_client(e);
 
-		if ( client.connect() && client.version() >= _minSupportedServer &&
+		if ( client.connect() && version_ge(client.version_string(), _minSupportedVersion) &&
 		     test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency)) {
 			server = e;
 			client.close();
@@ -108,7 +133,7 @@ bool speedtest::SpeedTest::select_recommended_server(speedtest::Server& server) 
 const speedtest::Server speedtest::SpeedTest::best_server(int sample_size, speedtest::ServerCallback cb) {
 
 	auto best = find_best_server_in(servers(), _latency, sample_size, cb);
-	speedtest::Client client(best);
+	speedtest::Client client = make_client(best);
 	test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency);
 	client.close();
 	return best;
@@ -116,9 +141,9 @@ const speedtest::Server speedtest::SpeedTest::best_server(int sample_size, speed
 
 bool speedtest::SpeedTest::set_server(speedtest::Server& server) {
 
-	speedtest::Client client(server);
+	speedtest::Client client = make_client(server);
 
-	if ( client.connect() && client.version() >= _minSupportedServer &&
+	if ( client.connect() && version_ge(client.version_string(), _minSupportedVersion) &&
 	     test_latency(client, speedtest::LATENCY_SAMPLE_SIZE, _latency)) {
 		client.close();
 		return true;
@@ -170,9 +195,9 @@ const unsigned long& speedtest::SpeedTest::sent() {
 	return _bytesSent;
 }
 
-bool speedtest::SpeedTest::jitter(const speedtest::Server& server, long& result, const int sample) {
+bool speedtest::SpeedTest::jitter(const speedtest::Server& server, double& result, const int sample) {
 
-	speedtest::Client client(server);
+	speedtest::Client client = make_client(server);
 
 	if ( !client.connect())
 		return false;
@@ -195,7 +220,54 @@ bool speedtest::SpeedTest::jitter(const speedtest::Server& server, long& result,
 	}
 
 	client.close();
-	result = measurements > 0 ? static_cast<long>(std::floor(current_jitter / measurements)) : 0;
+	result = measurements > 0 ? current_jitter / measurements : 0;
+	return true;
+}
+
+bool speedtest::SpeedTest::packet_loss(const speedtest::Server& server, speedtest::PacketLoss& result, const int duration_seconds) {
+
+	// Uplink loss probe: numbered UDP datagrams to the server while a TCP
+	// sampler polls the acknowledged counters ("PLOSS" query). Mirrors
+	// speedtest-go's PacketLossAnalyzer (67ms send interval, 1s sampling);
+	// the last successful sample wins.
+	result = { 0, 0, 0 };
+
+	auto client = make_client(server);
+	if ( !client.connect())
+		return false;
+
+	std::string uuid = generate_uuid();
+	if ( !client.init_packet_loss(uuid))
+		return false;
+
+	speedtest::PacketLossSender sender(uuid);
+	if ( !_source_ip.empty() )
+		sender.set_source(_source_ip);
+	if ( !sender.connect(server.host))
+		return false;
+
+	std::atomic<bool> running{true};
+	int order = 0;
+	std::thread sender_thread([&] {
+		while ( running ) {
+			sender.send(order++);
+			std::this_thread::sleep_for(std::chrono::milliseconds(67));
+		}
+	});
+
+	for ( int i = 0; i < duration_seconds; i++ ) {
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+		speedtest::PacketLoss sample;
+		if ( !client.packet_loss(sample) )
+			break;
+		result = sample;
+	}
+
+	running = false;
+	if ( sender_thread.joinable() )
+		sender_thread.join();
+
+	client.close();
 	return true;
 }
 
@@ -298,7 +370,7 @@ speedtest::Speed speedtest::SpeedTest::execute(const speedtest::Server& server, 
 
 		workers.emplace_back([&, i]() {
 
-			speedtest::Client client(server);
+			speedtest::Client client = make_client(server);
 
 			if ( !client.connect()) {
 				active--;
@@ -398,7 +470,9 @@ CURLcode speedtest::SpeedTest::http_get(const std::string& url, std::stringstrea
 		if ( CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_FILE, &ss))          &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout))   &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, _strict_ssl_verify)) &&
-		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str())))
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str()))   &&
+		     ( this -> _source_ip.empty() ||
+		       CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_INTERFACE, this -> _source_ip.c_str())) ) )
 			code = curl_easy_perform(curl);
 
 		if ( handler == nullptr )
@@ -419,7 +493,9 @@ CURLcode speedtest::SpeedTest::http_post(const std::string& url, const std::stri
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout))   &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_URL, url.c_str()))   &&
 		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, _strict_ssl_verify)) &&
-		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.c_str())))
+		     CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postdata.c_str())) &&
+		     ( this -> _source_ip.empty() ||
+		       CURLE_OK == (code = curl_easy_setopt(curl, CURLOPT_INTERFACE, this -> _source_ip.c_str())) ) )
 			code = curl_easy_perform(curl);
 
 		if ( handler == nullptr )
@@ -563,14 +639,14 @@ speedtest::Server speedtest::SpeedTest::find_best_server_in(const std::vector<sp
 
 	for ( auto& server : servers ) {
 
-		speedtest::Client client(server);
+		speedtest::Client client = make_client(server);
 
 		if ( !client.connect()) {
 			if ( cb ) cb(false, server, -1);
 			continue;
 		}
 
-		if ( client.version() < _minSupportedServer ) {
+		if ( !version_ge(client.version_string(), _minSupportedVersion) ) {
 			client.close();
 			continue;
 		}
@@ -612,4 +688,25 @@ bool speedtest::SpeedTest::test_latency(speedtest::Client& client, const int sam
 
 void speedtest::SpeedTest::set_insecure(bool insecure) {
 	_strict_ssl_verify = !insecure;
+}
+
+void speedtest::SpeedTest::set_source_ip(const std::string& ip) {
+
+	if ( _source_ip == ip )
+		return;
+
+	_source_ip = ip;
+
+	// Config-derived data (client IP, server list) may have been fetched
+	// over the default route before the source was pinned. Drop it so the
+	// next access re-fetches it with the chosen egress interface bound.
+	_ipinfo = speedtest::IPInfo();
+	_servers.clear();
+}
+
+speedtest::Client speedtest::SpeedTest::make_client(const speedtest::Server& server) {
+	speedtest::Client client(server);
+	if ( !_source_ip.empty() )
+		client.set_source(_source_ip);
+	return client;
 }

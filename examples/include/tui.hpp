@@ -85,7 +85,7 @@ namespace tui {
 		std::function<void(const std::string&)> on_stage;
 		// Server chosen and latency/jitter measured.
 		std::function<void(const speedtest::Server&, const speedtest::IPInfo&,
-		        long latency_ms, long jitter_ms)> on_ready;
+		        long latency_ms, double jitter_ms)> on_ready;
 		// Live update: windowed instantaneous speed + elapsed/total seconds.
 		std::function<void(Phase, speedtest::Speed instant,
 		        double elapsed_s, double total_s)> on_live;
@@ -120,7 +120,7 @@ namespace tui {
 		}
 
 		long latency = sp.latency();
-		long jitter  = 0;
+		double jitter  = 0;
 		sp.jitter(server, jitter);
 
 		if ( hooks.on_ready )

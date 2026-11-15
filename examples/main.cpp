@@ -19,7 +19,7 @@ void banner() {
 void usage(const char* name) {
 	std::cerr << "Usage: " << name <<
 		" [--latency] [--download] [--upload] [--share] [--help]\n"
-		"      [--test-server host:port] [--output verbose|text|json]\n"
+		"      [--test-server host:port] [--source ip] [--output verbose|text|json]\n"
 		"\noptional arguments:\n"
 		"  --help                      Show this message and exit\n"
 		"  --list-servers              Show list of servers\n"
@@ -29,6 +29,8 @@ void usage(const char* name) {
 		"  --share                     Generate and provide a URL to the speedtest.net share results image\n"
 		"  --insecure                  Skip SSL certificate verify (Useful for Embedded devices)\n"
 		"  --test-server host:port     Run speed test against a specific server\n"
+		"  --source ip                 Bind test sockets to this local address (selects egress interface)\n"
+		"  --loss-seconds secs         Packet-loss probe duration. Default: 5\n"
 		"  --force-by-latency-test     Always select server based on local latency test\n"
 		"  --output verbose|text|json  Set output type. Default: verbose\n" << std::endl;
 }
@@ -53,6 +55,8 @@ int main(const int argc, const char **argv) {
 	signal(SIGPIPE, SIG_IGN);
 
 	auto sp = speedtest::SpeedTest();
+	if ( !opts.source.empty() )
+		sp.set_source_ip(opts.source);
 	speedtest::IPInfo info;
 	speedtest::Server server;
 
@@ -163,7 +167,34 @@ int main(const int argc, const char **argv) {
 
 	} else {
 		server.host.append(opts.selected_server);
-		sp.set_server(server, servers);
+		if ( !sp.set_server(server, servers) ) {
+			std::cerr << "Warning: pinned server " << opts.selected_server
+			          << " failed latency setup — ";
+			speedtest::Client probe(server);
+			if ( !opts.source.empty() )
+				probe.set_source(opts.source);
+			if ( probe.connect() ) {
+				std::cerr << "connect ok, protocol version " << probe.version()
+				          << " (min " << speedtest::MIN_SERVER_VERSION << ")";
+				double ms = 0;
+				int ok = 0;
+				for ( int i = 1; i <= static_cast<int>(speedtest::LATENCY_SAMPLE_SIZE); i++ ) {
+					if ( probe.ping(ms) ) {
+						ok++;
+						continue;
+					}
+					std::cerr << ", ping #" << i << " of " << speedtest::LATENCY_SAMPLE_SIZE
+					          << " FAILED (after " << ok << " ok)";
+					break;
+				}
+				if ( ok == static_cast<int>(speedtest::LATENCY_SAMPLE_SIZE) )
+					std::cerr << ", all " << ok << " pings ok";
+				std::cerr << std::endl;
+			} else {
+				std::cerr << "connect failed" << std::endl;
+			}
+			probe.close();
+		}
 		recommended_chosen = server.recommended;
 	}
 
@@ -197,7 +228,7 @@ int main(const int argc, const char **argv) {
 	else if ( opts.output_type == OutputType::json )
 		std::cout << "\"ping\":" << sp.latency() << ",";
 
-	long jitter = 0;
+	double jitter = 0;
 
 	if ( opts.output_type == OutputType::verbose )
 		std::cout << "Jitter: " << std::flush;
@@ -206,9 +237,9 @@ int main(const int argc, const char **argv) {
 		if ( opts.output_type == OutputType::verbose )
 			std::cout << jitter << " ms.\n";
 		else if ( opts.output_type == OutputType::text )
-			std::cout << "JITTER=" << jitter << "\n";
+			std::cout << "JITTER=" << std::fixed << std::setprecision(2) << jitter << "\n";
 		else if ( opts.output_type == OutputType::json )
-			std::cout << "\"jitter\":" << jitter << ",";
+			std::cout << "\"jitter\":" << std::fixed << std::setprecision(2) << jitter << ",";
 	} else {
 		if ( opts.output_type == OutputType::json )
 			std::cout << "\"jitter\":-1,";
@@ -321,6 +352,28 @@ int main(const int argc, const char **argv) {
 		else
 			std::cerr << "\nUpload test failed.\n";
 		return EXIT_FAILURE;
+	}
+
+	speedtest::PacketLoss packet_loss_result;
+	bool loss_ran = sp.packet_loss(server, packet_loss_result, opts.loss_seconds);
+
+	if ( opts.output_type == OutputType::verbose ) {
+		if ( loss_ran && packet_loss_result.sent > 0 )
+			std::cout << "Packet Loss: " << std::fixed << std::setprecision(2)
+			          << packet_loss_result.LossPercent() << "% (Sent: " << packet_loss_result.sent
+			          << "/Dup: " << packet_loss_result.dup << "/Max: " << packet_loss_result.max << ")\n";
+		else
+			std::cout << "Packet Loss: N/A\n";
+	} else if ( opts.output_type == OutputType::text ) {
+		if ( loss_ran && packet_loss_result.sent > 0 )
+			std::cout << "PACKET_LOSS=" << std::fixed << std::setprecision(2)
+			          << packet_loss_result.LossPercent() << "\n";
+		else
+			std::cout << "PACKET_LOSS=N/A\n";
+	} else if ( opts.output_type == OutputType::json ) {
+		std::cout << "\"packet_loss\":{\"sent\":" << packet_loss_result.sent
+		          << ",\"dup\":" << packet_loss_result.dup
+		          << ",\"max\":" << packet_loss_result.max << "},";
 	}
 
 	if ( opts.share ) {

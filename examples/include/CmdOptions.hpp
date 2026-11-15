@@ -4,10 +4,13 @@
 // Created by Francesco Laurita on 9/9/16.
 //
 
+#include <cstdlib>
 #include <cstring>
 #include <getopt.h>
 
 #define OPT_LIST 1000
+#define OPT_SOURCE 1001
+#define OPT_LOSS_SECONDS 1002
 
 enum OutputType { verbose, text, json };
 
@@ -21,6 +24,8 @@ typedef struct program_options_t {
 	bool insecure			= false;
 	bool force_ping_selected	= false;
 	std::string selected_server 	= "";
+	std::string source 		= "";
+	int loss_seconds 		= 5;
 	OutputType output_type		= OutputType::verbose;
 } ProgramOptions;
 
@@ -35,6 +40,8 @@ static struct option CmdLongOptions[] = {
 	{ "force-by-latency-test",	no_argument,		0, 'f' },
 	{ "test-server",		required_argument,	0, 't' },
 	{ "output",			required_argument,	0, 'o' },
+	{ "source",			required_argument,	0, OPT_SOURCE },
+	{ "loss-seconds",		required_argument,	0, OPT_LOSS_SECONDS },
 	{ 0, 0, 0, 0 }
 };
 
@@ -75,6 +82,14 @@ bool ParseOptions(const int argc, const char **argv, ProgramOptions& options) {
 				break;
 			case 't':
 				options.selected_server.append(optarg);
+				break;
+			case OPT_SOURCE:
+				options.source = optarg;
+				break;
+			case OPT_LOSS_SECONDS:
+				options.loss_seconds = std::atoi(optarg);
+				if ( options.loss_seconds < 1 )
+					options.loss_seconds = 1;
 				break;
 			case 'o':
 				if (strcmp(optarg, "verbose") == 0)

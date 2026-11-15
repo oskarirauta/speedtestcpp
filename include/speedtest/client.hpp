@@ -18,11 +18,18 @@ namespace speedtest {
 
 		public:
 
-			explicit Client(const speedtest::Server& server) : _fd(0), _version(-1.0), _server(server) {}
+			explicit Client(const speedtest::Server& server) : _fd(0), _version(-1.0), _version_str(""), _server(server) {}
 			~Client();
+
+			Client(Client&& other) noexcept;
+			Client& operator=(Client&& other) noexcept;
+			Client(const Client&) = delete;
+			Client& operator=(const Client&) = delete;
 
 			bool connect();
 			bool ping(double &ms);
+			bool init_packet_loss(const std::string& id);
+			bool packet_loss(speedtest::PacketLoss& result);
 			bool upload(long size, long chunk_size, std::atomic<long long>& counter,
 			        std::chrono::steady_clock::time_point deadline);
 			bool download(long size, long chunk_size, std::atomic<long long>& counter,
@@ -30,12 +37,16 @@ namespace speedtest {
 			void close();
 
 			float version();
+			const std::string& version_string();
+			void set_source(const std::string& ip);
 			const std::pair<std::string, int> host();
 
 		private:
 
 			int _fd;
 			float _version;
+			std::string _version_str;
+			std::string _source;
 			speedtest::Server _server;
 
 			bool mk_socket();

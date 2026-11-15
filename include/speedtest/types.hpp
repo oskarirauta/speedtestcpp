@@ -54,4 +54,26 @@ namespace speedtest {
         bool  recommended = false;
     };
 
+    // Packet-loss statistics from the raw-TCP protocol's UDP probe phase.
+    // Mirrors speedtest-go's transport.PLoss so the field semantics (and the
+    // loss formula) stay identical across hosts.
+    struct PacketLoss {
+
+        int sent = 0;   // Number of sent packets acknowledged by the remote.
+        int dup  = 0;   // Number of duplicate packets acknowledged by the remote.
+        int max  = 0;   // The maximum index value received by the remote.
+
+        double Loss() const {
+            if ( sent == 0 )
+                return -1;
+            return 1.0 - static_cast<double>(sent - dup) / static_cast<double>(max + 1);
+        }
+
+        double LossPercent() const {
+            if ( sent == 0 )
+                return -1;
+            return Loss() * 100.0;
+        }
+    };
+
 }
