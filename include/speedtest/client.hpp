@@ -28,6 +28,8 @@ namespace speedtest {
 
 			bool connect();
 			bool ping(double &ms);
+			bool init_packet_loss(const std::string& id);
+			bool packet_loss(speedtest::PacketLoss& result);
 			bool upload(long size, long chunk_size, std::atomic<long long>& counter,
 			        std::chrono::steady_clock::time_point deadline);
 			bool download(long size, long chunk_size, std::atomic<long long>& counter,

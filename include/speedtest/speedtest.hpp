@@ -60,6 +60,7 @@ namespace speedtest {
 			bool download_speed(const speedtest::Server& server, const speedtest::Config& config, speedtest::Speed& result, speedtest::SpeedCallback cb = nullptr);
 			bool upload_speed(const speedtest::Server& server, const speedtest::Config& config, speedtest::Speed& result, speedtest::SpeedCallback cb = nullptr);
 			bool jitter(const speedtest::Server& server, double& result, int sample = 40);
+			bool packet_loss(const speedtest::Server& server, speedtest::PacketLoss& result, int duration_seconds = 5);
 			bool share(const speedtest::Server& server, std::string& image_url);
 
 			void reset_servers();

@@ -101,6 +101,51 @@ bool speedtest::Client::ping(double &ms) {
 	return false;
 }
 
+bool speedtest::Client::init_packet_loss(const std::string& id) {
+
+	// "HI <uuid>" opens the loss session on the server and "INITPLOSS" arms
+	// it; the protocol has no replies for either.
+	if ( !this -> write("HI " + id))
+		return false;
+
+	return this -> write("INITPLOSS");
+}
+
+bool speedtest::Client::packet_loss(speedtest::PacketLoss& result) {
+
+	if ( !this -> write("PLOSS"))
+		return false;
+
+	// Servers differ on whether they answer the loss-init commands
+	// ("HI <uuid>", "INITPLOSS"): some reply HELLO/OK/ERROR, some stay
+	// silent. Skip any stale replies until the actual "PLOSS ..."
+	// counter line arrives.
+	std::string reply;
+	for ( int attempts = 0; attempts < 4; attempts++ ) {
+		if ( !this -> read(reply) )
+			return false;
+		if ( reply.rfind("PLOSS", 0) == 0 )
+			break;
+	}
+
+	std::stringstream reply_stream(reply);
+	std::string token;
+	reply_stream >> token;
+
+	if ( token != "PLOSS")
+		return false;
+
+	long sent = 0, dup = 0, max = 0;
+	reply_stream >> sent >> dup >> max;
+	if ( reply_stream.fail() || sent < 0 || dup < 0 || max < 0 )
+		return false;
+
+	result.sent = static_cast<int>(sent);
+	result.dup  = static_cast<int>(dup);
+	result.max  = static_cast<int>(max);
+	return true;
+}
+
 bool speedtest::Client::download(long size, long chunk_size, std::atomic<long long>& counter,
 		std::chrono::steady_clock::time_point deadline) {
 

@@ -30,6 +30,7 @@ void usage(const char* name) {
 		"  --insecure                  Skip SSL certificate verify (Useful for Embedded devices)\n"
 		"  --test-server host:port     Run speed test against a specific server\n"
 		"  --source ip                 Bind test sockets to this local address (selects egress interface)\n"
+		"  --loss-seconds secs         Packet-loss probe duration. Default: 5\n"
 		"  --force-by-latency-test     Always select server based on local latency test\n"
 		"  --output verbose|text|json  Set output type. Default: verbose\n" << std::endl;
 }
@@ -351,6 +352,28 @@ int main(const int argc, const char **argv) {
 		else
 			std::cerr << "\nUpload test failed.\n";
 		return EXIT_FAILURE;
+	}
+
+	speedtest::PacketLoss packet_loss_result;
+	bool loss_ran = sp.packet_loss(server, packet_loss_result, opts.loss_seconds);
+
+	if ( opts.output_type == OutputType::verbose ) {
+		if ( loss_ran && packet_loss_result.sent > 0 )
+			std::cout << "Packet Loss: " << std::fixed << std::setprecision(2)
+			          << packet_loss_result.LossPercent() << "% (Sent: " << packet_loss_result.sent
+			          << "/Dup: " << packet_loss_result.dup << "/Max: " << packet_loss_result.max << ")\n";
+		else
+			std::cout << "Packet Loss: N/A\n";
+	} else if ( opts.output_type == OutputType::text ) {
+		if ( loss_ran && packet_loss_result.sent > 0 )
+			std::cout << "PACKET_LOSS=" << std::fixed << std::setprecision(2)
+			          << packet_loss_result.LossPercent() << "\n";
+		else
+			std::cout << "PACKET_LOSS=N/A\n";
+	} else if ( opts.output_type == OutputType::json ) {
+		std::cout << "\"packet_loss\":{\"sent\":" << packet_loss_result.sent
+		          << ",\"dup\":" << packet_loss_result.dup
+		          << ",\"max\":" << packet_loss_result.max << "},";
 	}
 
 	if ( opts.share ) {
